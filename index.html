@@ -143,6 +143,10 @@ function TaskCard({ task, members, onStatusChange, showAssignee }) {
       e(Badge, { tone: task.priority === PRIORITY.URGENT ? "red" : "neutral" }, task.priority)
     ),
     task.desc && e("div", { key: "desc", style: { fontSize: 13, color: C.muted, fontFamily: FONT, lineHeight: 1.5 } }, task.desc),
+    (task.requester || task.room) && e("div", { key: "info", style: { display: "flex", flexWrap: "wrap", gap: 6 } },
+      task.requester && e(Badge, { tone: "neutral" }, "👤 " + task.requester),
+      task.room && e(Badge, { tone: "neutral" }, "🚪 Otaq " + task.room)
+    ),
     e("div", { key: "meta", style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginTop: 2 } },
       e("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
         showAssignee !== false && assignee && e(React.Fragment, null,
@@ -176,6 +180,8 @@ function App() {
   const [tab, setTab] = useState("new");
   const [newTitle, setNewTitle] = useState("");
   const [newDesc, setNewDesc] = useState("");
+  const [newRequester, setNewRequester] = useState("");
+  const [newRoom, setNewRoom] = useState("");
   const [newPriority, setNewPriority] = useState(PRIORITY.NORMAL);
   const [assignMode, setAssignMode] = useState("strict");
   const [manualPick, setManualPick] = useState(null);
@@ -319,10 +325,11 @@ function App() {
         }
       }
       const task = { id: uid(), title: newTitle.trim(), desc: newDesc.trim(), priority: newPriority,
+        requester: newRequester.trim(), room: newRoom.trim(),
         status: STATUS.NEW, assignedTo, createdBy: currentUser.name, createdAt: Date.now() };
       return { ...prev, tasks: [...prev.tasks, task], rrIndex };
     });
-    setNewTitle(""); setNewDesc(""); setNewPriority(PRIORITY.NORMAL); setManualPick(null); setAssignMode("strict");
+    setNewTitle(""); setNewDesc(""); setNewRequester(""); setNewRoom(""); setNewPriority(PRIORITY.NORMAL); setManualPick(null); setAssignMode("strict");
   }
 
   function addMember() {
@@ -403,6 +410,10 @@ function App() {
         e("textarea", { value: newDesc, onChange: ev => setNewDesc(ev.target.value), rows: 3,
           style: { background: C.surface, border: "1px solid " + C.border, borderRadius: 8, padding: "9px 12px",
             color: C.text, fontSize: 14, fontFamily: FONT, outline: "none", resize: "vertical" } })
+      ),
+      e("div", { style: { display: "flex", gap: 10 } },
+        e("div", { style: { flex: 1 } }, e(Input, { label: "Hansı əməkdaşa dəstək lazımdır", value: newRequester, onChange: ev => setNewRequester(ev.target.value), placeholder: "Məs: Elvin (Mühasibatlıq)" })),
+        e("div", { style: { flex: 1 } }, e(Input, { label: "Otaq nömrəsi", value: newRoom, onChange: ev => setNewRoom(ev.target.value), placeholder: "Məs: 214" }))
       ),
       e("div", { style: { display: "flex", gap: 8 } },
         Object.values(PRIORITY).map(p => e("button", {
