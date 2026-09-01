@@ -2,8 +2,15 @@
 <html lang="az">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <title>Tapşırıq Növbəsi</title>
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#12161D" />
+<link rel="icon" href="icon-192.png" />
+<link rel="apple-touch-icon" href="icon-192.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Tapşırıqlar" />
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -148,6 +155,7 @@ function TaskCard({ task, members, onStatusChange, showAssignee }) {
       task.requester && e(Badge, { tone: "neutral" }, "👤 " + task.requester),
       task.room && e(Badge, { tone: "neutral" }, "🚪 Otaq " + task.room)
     ),
+    task.createdBy && e("div", { key: "creator", style: { fontSize: 11.5, color: C.faint, fontFamily: FONT } }, "Yaradıb: " + task.createdBy),
     e("div", { key: "meta", style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginTop: 2 } },
       e("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
         showAssignee !== false && assignee && e(React.Fragment, null,
@@ -541,6 +549,13 @@ const wrapStyle = { minHeight: "100vh", background: C.bg, display: "flex", flexD
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
 root.render(e(App));
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  });
+}
+
 </script>
 </body>
 </html>
