@@ -156,6 +156,7 @@ function TaskCard({ task, members, onStatusChange, showAssignee }) {
       task.room && e(Badge, { tone: "neutral" }, "🚪 Otaq " + task.room)
     ),
     task.createdBy && e("div", { key: "creator", style: { fontSize: 11.5, color: C.faint, fontFamily: FONT } }, "Yaradıb: " + task.createdBy),
+    task.status === STATUS.DONE && task.resolvedBy && e("div", { key: "resolver", style: { fontSize: 11.5, color: C.green, fontFamily: FONT } }, "Həll edib: " + task.resolvedBy),
     e("div", { key: "meta", style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginTop: 2 } },
       e("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
         showAssignee !== false && assignee && e(React.Fragment, null,
@@ -323,7 +324,16 @@ function App() {
   const suggestion = pickNext(state.members, state.tasks, state.rrIndex, "strict");
 
   function changeStatus(taskId, status) {
-    persist(prev => ({ ...prev, tasks: prev.tasks.map(t => t.id === taskId ? { ...t, status, updatedAt: Date.now() } : t) }));
+    persist(prev => ({
+      ...prev,
+      tasks: prev.tasks.map(t => {
+        if (t.id !== taskId) return t;
+        const updated = { ...t, status, updatedAt: Date.now() };
+        if (status === STATUS.DOING) updated.startedBy = currentUser.name;
+        if (status === STATUS.DONE) updated.resolvedBy = currentUser.name;
+        return updated;
+      })
+    }));
   }
 
   function submitTask() {
