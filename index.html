@@ -15,6 +15,7 @@
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
   * { box-sizing: border-box; }
@@ -37,6 +38,9 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 const docRef = db.collection("dispatch").doc("state");
+const VAPID_KEY = "BK99rID_DLVs_6-yjJNeJ6g5giMuAMXoWOlAGYUaRivqeyHlXKBbPcA6OeDEKWEnShNSsn1aZfnJr-vh-k4-ptI";
+let messaging = null;
+try { messaging = firebase.messaging.isSupported() ? firebase.messaging() : null; } catch (e) { messaging = null; }
 
 // ---------- Constants ----------
 const e = React.createElement;
@@ -417,6 +421,26 @@ function App() {
   }
 
   function startEditMember(m) { setEditingMemberId(m.id); setEditMemberName(m.name); setEditMemberPin(m.pin); }
+
+  async function enablePush() {
+    if (typeof Notification === "undefined") { setNotifPermission("unsupported"); return; }
+    const perm = await Notification.requestPermission();
+    setNotifPermission(perm);
+    if (perm !== "granted") return;
+    if (!messaging) return; // FCM not supported on this browser, foreground notifications still work
+    try {
+      const registration = await navigator.serviceWorker.register("firebase-messaging-sw.js");
+      const token = await messaging.getToken({ vapidKey: VAPID_KEY, serviceWorkerRegistration: registration });
+      if (token) {
+        persist(prev => ({
+          ...prev,
+          members: prev.members.map(m => m.id === currentUser.id
+            ? { ...m, fcmTokens: Array.from(new Set([...(m.fcmTokens || []), token])) }
+            : m)
+        }));
+      }
+    } catch (err) { console.error("FCM token error", err); }
+  }
   function saveEditMember() {
     if (!editMemberName.trim() || editMemberPin.length < 4) return;
     persist(prev => ({ ...prev, members: prev.members.map(m => m.id === editingMemberId ? { ...m, name: editMemberName.trim(), pin: editMemberPin } : m) }));
@@ -580,7 +604,7 @@ function App() {
       notifPermission === "denied" && e("div", { style: { color: C.red, fontSize: 13, fontFamily: FONT } }, "Bildirişlər bloklanıb — brauzerin sayt ayarlarından əl ilə icazə verməlisiniz."),
       notifPermission === "unsupported" && e("div", { style: { color: C.faint, fontSize: 13, fontFamily: FONT } }, "Bu brauzer bildirişi dəstəkləmir."),
       notifPermission === "default" && e("button", {
-        onClick: () => { Notification.requestPermission().then(p => setNotifPermission(p)); },
+        onClick: enablePush,
         style: primaryBtn
       }, "🔔 Bildirişləri aktivləşdir")
     ));
