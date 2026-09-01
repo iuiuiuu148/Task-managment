@@ -40,7 +40,7 @@ const docRef = db.collection("dispatch").doc("state");
 
 // ---------- Constants ----------
 const e = React.createElement;
-const { useState, useEffect, useCallback } = React;
+const { useState, useEffect, useCallback, useRef } = React;
 
 const C = {
   bg: "#12161D", surface: "#1A2029", surface2: "#212836",
@@ -203,6 +203,10 @@ function App() {
   const [editingMemberId, setEditingMemberId] = useState(null);
   const [editMemberName, setEditMemberName] = useState("");
   const [editMemberPin, setEditMemberPin] = useState("");
+  const [notifPermission, setNotifPermission] = useState(
+    (typeof Notification !== "undefined") ? Notification.permission : "unsupported"
+  );
+  const prevTaskIdsRef = useRef(null);
 
   useEffect(() => {
     const unsub = docRef.onSnapshot(snap => {
@@ -228,6 +232,29 @@ function App() {
       if (fresh && (fresh.name !== currentUser.name || fresh.pin !== currentUser.pin)) setCurrentUser(fresh);
       if (!fresh) setCurrentUser(null);
     }
+  }, [state]);
+
+  useEffect(() => {
+    if (!currentUser) { prevTaskIdsRef.current = null; return; }
+  }, [currentUser && currentUser.id]);
+
+  useEffect(() => {
+    if (!state || !currentUser) return;
+    const myTasksNow = state.tasks.filter(t => t.assignedTo === currentUser.id);
+    const myIds = new Set(myTasksNow.map(t => t.id));
+    if (prevTaskIdsRef.current === null) {
+      prevTaskIdsRef.current = myIds;
+      return;
+    }
+    myTasksNow.forEach(t => {
+      if (!prevTaskIdsRef.current.has(t.id) && typeof Notification !== "undefined" && Notification.permission === "granted") {
+        try {
+          const n = new Notification("Yeni tapşırıq düşdü", { body: t.title, icon: "icon-192.png" });
+          n.onclick = () => window.focus();
+        } catch (err) {}
+      }
+    });
+    prevTaskIdsRef.current = myIds;
   }, [state]);
 
   const persist = useCallback((updater) => {
@@ -546,7 +573,16 @@ function App() {
         onKeyDown: onEnter(saveProfile) }),
       e("button", { onClick: saveProfile, disabled: !profileName.trim() || profilePin.length < 4,
         style: { ...primaryBtn, opacity: (!profileName.trim() || profilePin.length < 4) ? 0.5 : 1 } }, "✓ Yadda saxla"),
-      profileSaved && e("div", { style: { color: C.green, fontSize: 12.5, fontFamily: FONT, fontWeight: 600 } }, "Yadda saxlanıldı.")
+      profileSaved && e("div", { style: { color: C.green, fontSize: 12.5, fontFamily: FONT, fontWeight: 600 } }, "Yadda saxlanıldı."),
+      e("div", { style: { height: 1, background: C.border, margin: "8px 0" } }),
+      e("div", { style: { fontFamily: FONT, fontSize: 13, color: C.muted, fontWeight: 600 } }, "Bildirişlər"),
+      notifPermission === "granted" && e("div", { style: { color: C.green, fontSize: 13, fontFamily: FONT } }, "✓ Bildirişlər aktivdir."),
+      notifPermission === "denied" && e("div", { style: { color: C.red, fontSize: 13, fontFamily: FONT } }, "Bildirişlər bloklanıb — brauzerin sayt ayarlarından əl ilə icazə verməlisiniz."),
+      notifPermission === "unsupported" && e("div", { style: { color: C.faint, fontSize: 13, fontFamily: FONT } }, "Bu brauzer bildirişi dəstəkləmir."),
+      notifPermission === "default" && e("button", {
+        onClick: () => { Notification.requestPermission().then(p => setNotifPermission(p)); },
+        style: primaryBtn
+      }, "🔔 Bildirişləri aktivləşdir")
     ));
   }
 
