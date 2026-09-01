@@ -48,6 +48,7 @@ const FONT = "IBM Plex Sans, sans-serif";
 const DISPLAY_FONT = "Archivo, sans-serif";
 
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+function onEnter(fn) { return ev => { if (ev.key === "Enter") fn(); }; }
 function defaultState() { return { members: [], tasks: [], rrIndex: 0, defaultMode: "strict" }; }
 function activeMembers(members) { return members.filter(m => m.role === "member"); }
 function openTaskCount(tasks, memberId) {
@@ -87,11 +88,11 @@ function Badge({ children, tone }) {
     padding: "3px 9px", borderRadius: 6, fontFamily: FONT, whiteSpace: "nowrap" } }, children);
 }
 
-function Input({ label, value, onChange, placeholder, type }) {
+function Input({ label, value, onChange, placeholder, type, onKeyDown }) {
   return e("label", { style: { display: "flex", flexDirection: "column", gap: 6, fontFamily: FONT } },
     label && e("span", { style: { fontSize: 12.5, color: C.muted, fontWeight: 600 } }, label),
     e("input", {
-      value, onChange, placeholder, type: type || "text",
+      value, onChange, placeholder, type: type || "text", onKeyDown,
       style: { background: C.surface, border: "1px solid " + C.border, borderRadius: 8,
         padding: "9px 12px", color: C.text, fontSize: 14, fontFamily: FONT, outline: "none" }
     })
@@ -243,10 +244,16 @@ function App() {
           e("div", null,
             e("div", { style: { fontFamily: DISPLAY_FONT, fontWeight: 800, fontSize: 22, color: C.text } }, "Tapşırıq Növbəsi"),
             e("div", { style: { fontFamily: FONT, fontSize: 13.5, color: C.muted, marginTop: 4 } },
-              "İlk addım: reception hesabı yaradın. Komanda üzvlərini sonra əlavə edə bilərsiniz.")
+              "İlk addım: inspektor hesabı yaradın. Komanda üzvlərini sonra əlavə edə bilərsiniz.")
           ),
           e(Input, { label: "Adınız", value: setupName, onChange: ev => setSetupName(ev.target.value), placeholder: "Məs: Aysel" }),
-          e(Input, { label: "4 rəqəmli PIN", value: setupPin, onChange: ev => setSetupPin(ev.target.value.replace(/\D/g, "").slice(0, 6)), placeholder: "0000" }),
+          e(Input, { label: "4 rəqəmli PIN", value: setupPin, onChange: ev => setSetupPin(ev.target.value.replace(/\D/g, "").slice(0, 6)), placeholder: "0000",
+            onKeyDown: onEnter(() => {
+              if (!setupName.trim() || setupPin.length < 4) return;
+              const member = { id: uid(), name: setupName.trim(), pin: setupPin, role: "reception" };
+              const next = { ...state, members: [...state.members, member] };
+              persist(next); setCurrentUser(member);
+            }) }),
           e("button", {
             disabled: !setupName.trim() || setupPin.length < 4,
             onClick: () => {
@@ -255,7 +262,7 @@ function App() {
               persist(next); setCurrentUser(member);
             },
             style: { ...primaryBtn, opacity: (!setupName.trim() || setupPin.length < 4) ? 0.5 : 1 }
-          }, "🛡 Reception hesabı yarat")
+          }, "🛡 İnspektor hesabı yarat")
         )
       );
     }
@@ -276,12 +283,17 @@ function App() {
           },
             e(Avatar, { name: m.name, size: 26 }),
             e("span", { style: { fontFamily: FONT, fontSize: 13.5, color: C.text, fontWeight: 600 } }, m.name),
-            m.role === "reception" && e(Badge, { tone: "amber" }, "Reception")
+            m.role === "reception" && e(Badge, { tone: "amber" }, "İnspektor")
           ))
         ),
         loginSelected && e(React.Fragment, null,
           e(Input, { label: "PIN", type: "password", value: loginPin,
-            onChange: ev => setLoginPin(ev.target.value.replace(/\D/g, "").slice(0, 6)), placeholder: "0000" }),
+            onChange: ev => setLoginPin(ev.target.value.replace(/\D/g, "").slice(0, 6)), placeholder: "0000",
+            onKeyDown: onEnter(() => {
+              const m = state.members.find(x => x.id === loginSelected);
+              if (m && m.pin === loginPin) { setCurrentUser(m); setLoginPin(""); setLoginError(""); }
+              else setLoginError("PIN yanlışdır.");
+            }) }),
           loginError && e("div", { style: { color: C.red, fontSize: 12.5, fontFamily: FONT } }, loginError),
           e("button", {
             onClick: () => {
@@ -377,7 +389,7 @@ function App() {
   sections.push(e("div", { key: "header", style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
     e("div", null,
       e("div", { style: { fontFamily: DISPLAY_FONT, fontWeight: 800, fontSize: 20, color: C.text } }, "Tapşırıq Növbəsi"),
-      e("div", { style: { fontFamily: FONT, fontSize: 12.5, color: C.muted } }, isReception ? "Reception paneli" : "Komanda üzvü")
+      e("div", { style: { fontFamily: FONT, fontSize: 12.5, color: C.muted } }, isReception ? "İnspektor paneli" : "Komanda üzvü")
     ),
     e("div", { style: { display: "flex", alignItems: "center", gap: 10 } },
       e(Avatar, { name: currentUser.name, size: 30 }),
@@ -488,7 +500,8 @@ function App() {
         e("div", { style: { fontFamily: FONT, fontSize: 13, color: C.muted, fontWeight: 600 } }, "Yeni üzv əlavə et"),
         e("div", { style: { display: "flex", gap: 10 } },
           e("div", { style: { flex: 2 } }, e(Input, { value: addMemberName, onChange: ev => setAddMemberName(ev.target.value), placeholder: "Ad" })),
-          e("div", { style: { flex: 1 } }, e(Input, { value: addMemberPin, onChange: ev => setAddMemberPin(ev.target.value.replace(/\D/g, "").slice(0, 6)), placeholder: "PIN" }))
+          e("div", { style: { flex: 1 } }, e(Input, { value: addMemberPin, onChange: ev => setAddMemberPin(ev.target.value.replace(/\D/g, "").slice(0, 6)), placeholder: "PIN",
+            onKeyDown: onEnter(addMember) }))
         ),
         e("button", { onClick: addMember, disabled: !addMemberName.trim() || addMemberPin.length < 4,
           style: { ...primaryBtn, opacity: (!addMemberName.trim() || addMemberPin.length < 4) ? 0.5 : 1 } }, "+ Əlavə et")
@@ -511,7 +524,8 @@ function App() {
     sections.push(e("div", { key: "profile", style: { display: "flex", flexDirection: "column", gap: 14, maxWidth: 320 } },
       e("div", { style: { fontFamily: FONT, fontSize: 13, color: C.muted, fontWeight: 600 } }, "Adınızı və ya PIN-inizi dəyişin"),
       e(Input, { label: "Ad", value: profileName, onChange: ev => setProfileName(ev.target.value) }),
-      e(Input, { label: "PIN", value: profilePin, onChange: ev => setProfilePin(ev.target.value.replace(/\D/g, "").slice(0, 6)), placeholder: "0000" }),
+      e(Input, { label: "PIN", value: profilePin, onChange: ev => setProfilePin(ev.target.value.replace(/\D/g, "").slice(0, 6)), placeholder: "0000",
+        onKeyDown: onEnter(saveProfile) }),
       e("button", { onClick: saveProfile, disabled: !profileName.trim() || profilePin.length < 4,
         style: { ...primaryBtn, opacity: (!profileName.trim() || profilePin.length < 4) ? 0.5 : 1 } }, "✓ Yadda saxla"),
       profileSaved && e("div", { style: { color: C.green, fontSize: 12.5, fontFamily: FONT, fontWeight: 600 } }, "Yadda saxlanıldı.")
