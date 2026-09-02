@@ -154,7 +154,7 @@ function formatDuration(ms) {
   return h + " saat " + (m ? m + " dəq" : "");
 }
 
-function TaskCard({ task, members, currentUser, onStart, onPause, onResume, onResolve, onFail, onComment, showAssignee }) {
+function TaskCard({ task, members, currentUser, onStart, onPause, onResume, onResolve, onFail, onComment, onDelete, showAssignee }) {
   const [commentText, setCommentText] = useState("");
   const [showFailBox, setShowFailBox] = useState(false);
   const [failReasonText, setFailReasonText] = useState("");
@@ -169,7 +169,13 @@ function TaskCard({ task, members, currentUser, onStart, onPause, onResume, onRe
   const children = [
     e("div", { key: "top", style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 } },
       e("div", { style: { fontFamily: FONT, fontWeight: 600, fontSize: 14.5, color: C.text, lineHeight: 1.35 } }, task.title),
-      e(Badge, { tone: task.priority === PRIORITY.URGENT ? "red" : "neutral" }, task.priority)
+      e("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
+        e(Badge, { tone: task.priority === PRIORITY.URGENT ? "red" : "neutral" }, task.priority),
+        onDelete && e("button", {
+          onClick: () => { if (window.confirm("Bu tapşırıq silinsin?")) onDelete(task.id); },
+          style: { ...iconBtn, color: C.faint }
+        }, "🗑")
+      )
     ),
     task.desc && e("div", { key: "desc", style: { fontSize: 13, color: C.muted, fontFamily: FONT, lineHeight: 1.5 } }, task.desc),
     (task.requester || task.room) && e("div", { key: "info", style: { display: "flex", flexWrap: "wrap", gap: 6 } },
@@ -487,6 +493,20 @@ function App() {
     }));
   }
 
+  function deleteTask(taskId) {
+    persist(prev => ({ ...prev, tasks: prev.tasks.filter(t => t.id !== taskId) }));
+  }
+
+  function resetAllTasks() {
+    if (!window.confirm("Bütün tapşırıqlar həmişəlik silinsin? Bu geri qaytarıla bilməz.")) return;
+    persist(prev => ({ ...prev, tasks: [] }));
+  }
+
+  function resetAllChat() {
+    if (!window.confirm("Bütün söhbət mesajları həmişəlik silinsin? Bu geri qaytarıla bilməz.")) return;
+    persist(prev => ({ ...prev, chat: [] }));
+  }
+
   function addComment(taskId, text) {
     persist(prev => ({
       ...prev,
@@ -708,7 +728,8 @@ function App() {
   if (tab === "board") {
     sections.push(e("div", { key: "board", style: { display: "flex", flexDirection: "column", gap: 12 } },
       allTasksSorted.length === 0 && e("div", { style: { color: C.faint, fontSize: 13.5, fontFamily: FONT } }, "Hələ tapşırıq yoxdur."),
-      allTasksSorted.map(t => e(TaskCard, { key: t.id, task: t, members: state.members, currentUser, onComment: addComment }))
+      allTasksSorted.map(t => e(TaskCard, { key: t.id, task: t, members: state.members, currentUser, onComment: addComment,
+        onDelete: isReception ? deleteTask : null }))
     ));
   }
 
@@ -770,7 +791,14 @@ function App() {
         .map(opt => e("label", { key: opt.id, style: { display: "flex", alignItems: "center", gap: 9, fontFamily: FONT, fontSize: 13.5, color: C.text, cursor: "pointer" } },
           e("input", { type: "radio", checked: state.defaultMode === opt.id, onChange: () => persist(prev => ({ ...prev, defaultMode: opt.id })) }), opt.label)),
       e("div", { style: { color: C.faint, fontSize: 12.5, fontFamily: FONT, marginTop: 4 } },
-        "Bu, yalnız \"Yeni tapşırıq\" formasının açılış dəyəridir — hər tapşırıqda üsulu dəyişə bilərsiniz.")
+        "Bu, yalnız \"Yeni tapşırıq\" formasının açılış dəyəridir — hər tapşırıqda üsulu dəyişə bilərsiniz."),
+      e("div", { style: { height: 1, background: C.border, margin: "10px 0" } }),
+      e("div", { style: { fontFamily: FONT, fontSize: 13, color: C.red, fontWeight: 600 } }, "Test datasının təmizlənməsi"),
+      e("div", { style: { color: C.faint, fontSize: 12, fontFamily: FONT } }, "Ciddi istifadəyə keçməzdən əvvəl sınaq tapşırıqlarını/mesajlarını silin. Bu geri qaytarılmır."),
+      e("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
+        e("button", { onClick: resetAllTasks, style: btnStyle(C.red) }, "🗑 Bütün tapşırıqları sil"),
+        e("button", { onClick: resetAllChat, style: btnStyle(C.red) }, "🗑 Bütün söhbəti sil")
+      )
     ));
   }
 
