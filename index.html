@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-<title>Tapşırıq Növbəsi</title>
+<title>IT Dəstək</title>
 <link rel="manifest" href="manifest.json" />
 <meta name="theme-color" content="#12161D" />
 <link rel="icon" href="icon-192.png" />
@@ -381,7 +381,7 @@ function App() {
       return e("div", { style: { ...wrapStyle, alignItems: "center", justifyContent: "center" } },
         e("div", { style: { width: 340, display: "flex", flexDirection: "column", gap: 18 } },
           e("div", null,
-            e("div", { style: { fontFamily: DISPLAY_FONT, fontWeight: 800, fontSize: 22, color: C.text } }, "Tapşırıq Növbəsi"),
+            e("div", { style: { fontFamily: DISPLAY_FONT, fontWeight: 800, fontSize: 22, color: C.text } }, "İT Dəstək"),
             e("div", { style: { fontFamily: FONT, fontSize: 13.5, color: C.muted, marginTop: 4 } },
               "İlk addım: admin hesabı yaradın. Komanda üzvlərini sonra əlavə edə bilərsiniz.")
           ),
@@ -423,7 +423,7 @@ function App() {
     return e("div", { style: { ...wrapStyle, alignItems: "center", justifyContent: "center" } },
       e("div", { style: { width: 340, display: "flex", flexDirection: "column", gap: 18 } },
         e("div", null,
-          e("div", { style: { fontFamily: DISPLAY_FONT, fontWeight: 800, fontSize: 22, color: C.text } }, "Tapşırıq Növbəsi"),
+          e("div", { style: { fontFamily: DISPLAY_FONT, fontWeight: 800, fontSize: 22, color: C.text } }, "İT Dəstək"),
           e("div", { style: { fontFamily: FONT, fontSize: 13.5, color: C.muted, marginTop: 4 } }, "Adınızı və PIN-inizi daxil edin.")
         ),
         e(Input, { label: "Ad", value: loginName, onChange: ev => { setLoginName(ev.target.value); setLoginError(""); }, placeholder: "Adınız", onKeyDown: onEnter(attemptLogin) }),
@@ -647,7 +647,7 @@ function App() {
   // Header
   sections.push(e("div", { key: "header", style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
     e("div", null,
-      e("div", { style: { fontFamily: DISPLAY_FONT, fontWeight: 800, fontSize: 20, color: C.text } }, "Tapşırıq Növbəsi"),
+      e("div", { style: { fontFamily: DISPLAY_FONT, fontWeight: 800, fontSize: 20, color: C.text } }, "İT Dəstək"),
       e("div", { style: { fontFamily: FONT, fontSize: 12.5, color: C.muted } }, isReception ? "Admin paneli" : "Komanda üzvü")
     ),
     e("div", { style: { display: "flex", alignItems: "center", gap: 10 } },
