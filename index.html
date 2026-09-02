@@ -321,6 +321,14 @@ function App() {
     prevTaskIdsRef.current = myIds;
   }, [state]);
 
+  useEffect(() => {
+    if (!currentUser || !state || tab !== "chat" || !chatPartnerId) return;
+    const me = state.members.find(m => m.id === currentUser.id);
+    const lastRead = (me && me.readReceipts && me.readReceipts[chatPartnerId]) || 0;
+    const hasUnread = (state.chat || []).some(m => m.senderId === chatPartnerId && m.recipientId === currentUser.id && m.at > lastRead);
+    if (hasUnread) markConversationRead(chatPartnerId);
+  }, [state, tab, chatPartnerId]);
+
   const persist = useCallback((updater) => {
     setState(prev => {
       const next = typeof updater === "function" ? updater(prev) : updater;
@@ -544,6 +552,15 @@ function App() {
     setEditingMemberId(null);
   }
 
+  function markConversationRead(partnerId) {
+    persist(prev => ({
+      ...prev,
+      members: prev.members.map(m => m.id === currentUser.id
+        ? { ...m, readReceipts: { ...(m.readReceipts || {}), [partnerId]: Date.now() } }
+        : m)
+    }));
+  }
+
   function sendChatMessage() {
     if (!chatInput.trim() || !chatPartnerId) return;
     const partner = state.members.find(m => m.id === chatPartnerId);
@@ -591,14 +608,24 @@ function App() {
     e(RotationStrip, { members: state.members, tasks: state.tasks, rrIndex: state.rrIndex, currentUserId: currentUser.id })
   ));
 
+  // Unread chat count
+  const myReadReceipts = (state.members.find(m => m.id === currentUser.id) || {}).readReceipts || {};
+  const unreadTotal = (state.chat || []).filter(m => m.recipientId === currentUser.id && m.at > (myReadReceipts[m.senderId] || 0)).length;
+
   // Tabs
   sections.push(e("div", { key: "tabs", style: { display: "flex", gap: 6, borderBottom: "1px solid " + C.border, flexWrap: "wrap" } },
     tabs.map(t => e("button", {
       key: t.id, onClick: () => setTab(t.id),
-      style: { background: "transparent", border: "none", borderBottom: tab === t.id ? "2px solid " + C.amber : "2px solid transparent",
+      style: { display: "flex", alignItems: "center", gap: 6, background: "transparent", border: "none", borderBottom: tab === t.id ? "2px solid " + C.amber : "2px solid transparent",
         color: tab === t.id ? C.text : C.muted, fontFamily: FONT, fontWeight: 600, fontSize: 13,
         padding: "8px 4px", marginBottom: -1, cursor: "pointer" }
-    }, t.label))
+    },
+      t.label,
+      t.id === "chat" && unreadTotal > 0 && e("span", {
+        style: { background: C.red, color: "#fff", fontSize: 10.5, fontWeight: 700, borderRadius: 999,
+          minWidth: 16, height: 16, display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "0 4px" }
+      }, unreadTotal)
+    ))
   ));
 
   if ((isReception || currentUser.canCreate) && tab === "new") {
@@ -723,15 +750,22 @@ function App() {
       e("div", { style: { fontFamily: FONT, fontSize: 12.5, color: C.muted, fontWeight: 600 } }, "Kiminlə yazmaq istəyirsiniz?"),
       e("div", { style: { display: "flex", flexWrap: "wrap", gap: 8 } },
         others.length === 0 && e("div", { style: { color: C.faint, fontSize: 13, fontFamily: FONT } }, "Başqa istifadəçi yoxdur."),
-        others.map(m => e("button", {
-          key: m.id, onClick: () => setChatPartnerId(m.id),
-          style: { display: "flex", alignItems: "center", gap: 7, padding: "6px 11px 6px 6px", borderRadius: 8,
-            border: "1.5px solid " + (chatPartnerId === m.id ? C.amber : C.border),
-            background: chatPartnerId === m.id ? C.amberDim : "transparent", cursor: "pointer" }
-        },
-          e(Avatar, { name: m.name, size: 22 }),
-          e("span", { style: { fontFamily: FONT, fontSize: 13, color: C.text } }, m.name)
-        ))
+        others.map(m => {
+          const unreadFromM = (state.chat || []).filter(msg => msg.senderId === m.id && msg.recipientId === currentUser.id && msg.at > (myReadReceipts[m.id] || 0)).length;
+          return e("button", {
+            key: m.id, onClick: () => setChatPartnerId(m.id),
+            style: { display: "flex", alignItems: "center", gap: 7, padding: "6px 11px 6px 6px", borderRadius: 8,
+              border: "1.5px solid " + (chatPartnerId === m.id ? C.amber : C.border),
+              background: chatPartnerId === m.id ? C.amberDim : "transparent", cursor: "pointer" }
+          },
+            e(Avatar, { name: m.name, size: 22 }),
+            e("span", { style: { fontFamily: FONT, fontSize: 13, color: C.text } }, m.name),
+            unreadFromM > 0 && e("span", {
+              style: { background: C.red, color: "#fff", fontSize: 10.5, fontWeight: 700, borderRadius: 999,
+                minWidth: 16, height: 16, display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "0 4px" }
+            }, unreadFromM)
+          );
+        })
       ),
       chatPartnerId && e(React.Fragment, null,
         e("div", { style: { height: 1, background: C.border } }),
