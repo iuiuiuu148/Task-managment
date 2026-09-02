@@ -53,14 +53,14 @@ const C = {
   amberDim: "#4A3A22", green: "#4FA97A", greenDim: "#1E3128",
   red: "#D9584C", redDim: "#3A2422",
 };
-const STATUS = { NEW: "Yeni", DOING: "Baxılır", DONE: "Həll edildi" };
+const STATUS = { NEW: "Yeni", DOING: "Baxılır", PAUSED: "Fasilədə", DONE: "Həll edildi" };
 const PRIORITY = { NORMAL: "Adi", URGENT: "Təcili" };
 const FONT = "IBM Plex Sans, sans-serif";
 const DISPLAY_FONT = "Archivo, sans-serif";
 
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
 function onEnter(fn) { return ev => { if (ev.key === "Enter") fn(); }; }
-function defaultState() { return { members: [], tasks: [], rrIndex: 0, defaultMode: "strict" }; }
+function defaultState() { return { members: [], tasks: [], rrIndex: 0, defaultMode: "strict", chat: [] }; }
 function activeMembers(members) { return members.filter(m => m.role === "member"); }
 function openTaskCount(tasks, memberId) {
   return tasks.filter(t => t.assignedTo === memberId && t.status !== STATUS.DONE).length;
@@ -147,8 +147,21 @@ function RotationStrip({ members, tasks, rrIndex, currentUserId }) {
   );
 }
 
-function TaskCard({ task, members, onStatusChange, showAssignee }) {
+function formatDuration(ms) {
+  const totalMin = Math.max(0, Math.round(ms / 60000));
+  if (totalMin < 60) return totalMin + " dəq";
+  const h = Math.floor(totalMin / 60), m = totalMin % 60;
+  return h + " saat " + (m ? m + " dəq" : "");
+}
+
+function TaskCard({ task, members, currentUser, onStart, onPause, onResume, onResolve, onComment, showAssignee }) {
+  const [commentText, setCommentText] = useState("");
   const assignee = members.find(m => m.id === task.assignedTo);
+  const isPaused = task.status === STATUS.PAUSED;
+  const isDoing = task.status === STATUS.DOING;
+  const isNew = task.status === STATUS.NEW;
+  const isDone = task.status === STATUS.DONE;
+
   const children = [
     e("div", { key: "top", style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 } },
       e("div", { style: { fontFamily: FONT, fontWeight: 600, fontSize: 14.5, color: C.text, lineHeight: 1.35 } }, task.title),
@@ -159,8 +172,12 @@ function TaskCard({ task, members, onStatusChange, showAssignee }) {
       task.requester && e(Badge, { tone: "neutral" }, "👤 " + task.requester),
       task.room && e(Badge, { tone: "neutral" }, "🚪 Otaq " + task.room)
     ),
-    task.createdBy && e("div", { key: "creator", style: { fontSize: 11.5, color: C.faint, fontFamily: FONT } }, "Yaradıb: " + task.createdBy),
-    task.status === STATUS.DONE && task.resolvedBy && e("div", { key: "resolver", style: { fontSize: 11.5, color: C.green, fontFamily: FONT } }, "Həll edib: " + task.resolvedBy),
+    e("div", { key: "times", style: { display: "flex", flexDirection: "column", gap: 2 } },
+      task.createdBy && e("div", { style: { fontSize: 11.5, color: C.faint, fontFamily: FONT } },
+        "Yaradıb: " + task.createdBy + (task.createdAt ? " · " + new Date(task.createdAt).toLocaleString("az-AZ") : "")),
+      task.status === STATUS.DONE && task.resolvedBy && e("div", { style: { fontSize: 11.5, color: C.green, fontFamily: FONT } },
+        "Həll edib: " + task.resolvedBy + (typeof task.durationMinutes === "number" ? " · " + formatDuration(task.durationMinutes * 60000) + " çəkib" : ""))
+    ),
     e("div", { key: "meta", style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginTop: 2 } },
       e("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
         showAssignee !== false && assignee && e(React.Fragment, null,
@@ -168,15 +185,43 @@ function TaskCard({ task, members, onStatusChange, showAssignee }) {
           e("span", { style: { fontSize: 12.5, color: C.muted, fontFamily: FONT } }, assignee.name)
         )
       ),
-      e(Badge, { tone: task.status === STATUS.DONE ? "green" : task.status === STATUS.DOING ? "amber" : "neutral" }, task.status)
+      e(Badge, { tone: isDone ? "green" : (isDoing ? "amber" : (isPaused ? "red" : "neutral")) }, task.status)
     )
   ];
-  if (onStatusChange && task.status !== STATUS.DONE) {
-    children.push(e("div", { key: "actions", style: { display: "flex", gap: 8, marginTop: 2 } },
-      task.status === STATUS.NEW && e("button", { onClick: () => onStatusChange(task.id, STATUS.DOING), style: btnStyle(C.amber) }, "▶ Başla"),
-      task.status === STATUS.DOING && e("button", { onClick: () => onStatusChange(task.id, STATUS.DONE), style: btnStyle(C.green) }, "✓ Həll et")
+
+  if (!isDone && (onStart || onPause || onResume || onResolve)) {
+    children.push(e("div", { key: "actions", style: { display: "flex", gap: 8, marginTop: 2, flexWrap: "wrap" } },
+      isNew && onStart && e("button", { onClick: () => onStart(task.id), style: btnStyle(C.amber) }, "▶ Başla"),
+      isDoing && onPause && e("button", { onClick: () => onPause(task.id), style: btnStyle(C.muted) }, "⏸ Fasilə ver"),
+      isDoing && onResolve && e("button", { onClick: () => onResolve(task.id), style: btnStyle(C.green) }, "✓ Həll et"),
+      isPaused && onResume && e("button", { onClick: () => onResume(task.id), style: btnStyle(C.amber) }, "▶ Davam et")
     ));
   }
+
+  if (task.comments && task.comments.length > 0) {
+    children.push(e("div", { key: "comments", style: { display: "flex", flexDirection: "column", gap: 6, background: C.surface, borderRadius: 8, padding: 10 } },
+      task.comments.map((c, i) => e("div", { key: i, style: { fontSize: 12.5, fontFamily: FONT } },
+        e("span", { style: { color: C.text, fontWeight: 600 } }, c.author + ": "),
+        e("span", { style: { color: C.muted } }, c.text),
+        e("span", { style: { color: C.faint, fontSize: 10.5, marginLeft: 6 } }, new Date(c.at).toLocaleString("az-AZ"))
+      ))
+    ));
+  }
+
+  if (onComment) {
+    children.push(e("div", { key: "commentbox", style: { display: "flex", gap: 6 } },
+      e("input", {
+        value: commentText, onChange: ev => setCommentText(ev.target.value), placeholder: "Şərh yaz...",
+        onKeyDown: ev => { if (ev.key === "Enter" && commentText.trim()) { onComment(task.id, commentText.trim()); setCommentText(""); } },
+        style: { flex: 1, background: C.surface, border: "1px solid " + C.border, borderRadius: 7, padding: "7px 10px", color: C.text, fontSize: 12.5, fontFamily: FONT, outline: "none" }
+      }),
+      e("button", {
+        onClick: () => { if (commentText.trim()) { onComment(task.id, commentText.trim()); setCommentText(""); } },
+        style: btnStyle(C.muted)
+      }, "Göndər")
+    ));
+  }
+
   return e("div", { style: { background: C.surface2, border: "1px solid " + C.border, borderRadius: 10,
     padding: 14, display: "flex", flexDirection: "column", gap: 10 } }, children);
 }
@@ -187,7 +232,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState(null);
   const [loginPin, setLoginPin] = useState("");
-  const [loginSelected, setLoginSelected] = useState(null);
+  const [loginName, setLoginName] = useState("");
   const [loginError, setLoginError] = useState("");
   const [setupName, setSetupName] = useState("");
   const [setupPin, setSetupPin] = useState("");
@@ -207,6 +252,7 @@ function App() {
   const [editingMemberId, setEditingMemberId] = useState(null);
   const [editMemberName, setEditMemberName] = useState("");
   const [editMemberPin, setEditMemberPin] = useState("");
+  const [chatInput, setChatInput] = useState("");
   const [notifPermission, setNotifPermission] = useState(
     (typeof Notification !== "undefined") ? Notification.permission : "unsupported"
   );
@@ -236,6 +282,18 @@ function App() {
       const fresh = state.members.find(m => m.id === currentUser.id);
       if (fresh && (fresh.name !== currentUser.name || fresh.pin !== currentUser.pin)) setCurrentUser(fresh);
       if (!fresh) setCurrentUser(null);
+    }
+  }, [state]);
+
+  useEffect(() => {
+    if (!currentUser && state && state.members && state.members.length > 0) {
+      try {
+        const savedId = localStorage.getItem("tn_userId");
+        if (savedId) {
+          const m = state.members.find(x => x.id === savedId);
+          if (m) setCurrentUser(m);
+        }
+      } catch (e) {}
     }
   }, [state]);
 
@@ -294,6 +352,7 @@ function App() {
               const member = { id: uid(), name: setupName.trim(), pin: setupPin, role: "reception" };
               const next = { ...state, members: [...state.members, member] };
               persist(next); setCurrentUser(member);
+              try { localStorage.setItem("tn_userId", member.id); } catch (e) {}
             }) }),
           e("button", {
             disabled: !setupName.trim() || setupPin.length < 4,
@@ -301,6 +360,7 @@ function App() {
               const member = { id: uid(), name: setupName.trim(), pin: setupPin, role: "reception" };
               const next = { ...state, members: [...state.members, member] };
               persist(next); setCurrentUser(member);
+              try { localStorage.setItem("tn_userId", member.id); } catch (e) {}
             },
             style: { ...primaryBtn, opacity: (!setupName.trim() || setupPin.length < 4) ? 0.5 : 1 }
           }, "🛡 İnspektor hesabı yarat")
@@ -308,43 +368,30 @@ function App() {
       );
     }
 
+    function attemptLogin() {
+      const typed = loginName.trim().toLowerCase();
+      const m = state.members.find(x => x.name.trim().toLowerCase() === typed);
+      if (m && m.pin === loginPin) {
+        setCurrentUser(m);
+        try { localStorage.setItem("tn_userId", m.id); } catch (e) {}
+        setLoginPin(""); setLoginName(""); setLoginError("");
+      } else {
+        setLoginError("Ad və ya PIN yanlışdır.");
+      }
+    }
+
     return e("div", { style: { ...wrapStyle, alignItems: "center", justifyContent: "center" } },
       e("div", { style: { width: 340, display: "flex", flexDirection: "column", gap: 18 } },
         e("div", null,
           e("div", { style: { fontFamily: DISPLAY_FONT, fontWeight: 800, fontSize: 22, color: C.text } }, "Tapşırıq Növbəsi"),
-          e("div", { style: { fontFamily: FONT, fontSize: 13.5, color: C.muted, marginTop: 4 } }, "Adınızı seçin və PIN daxil edin.")
+          e("div", { style: { fontFamily: FONT, fontSize: 13.5, color: C.muted, marginTop: 4 } }, "Adınızı və PIN-inizi daxil edin.")
         ),
-        e("div", { style: { display: "flex", flexWrap: "wrap", gap: 8 } },
-          state.members.map(m => e("button", {
-            key: m.id,
-            onClick: () => { setLoginSelected(m.id); setLoginError(""); },
-            style: { display: "flex", alignItems: "center", gap: 8, padding: "7px 12px 7px 7px",
-              borderRadius: 9, border: "1.5px solid " + (loginSelected === m.id ? C.amber : C.border),
-              background: loginSelected === m.id ? C.amberDim : C.surface, cursor: "pointer" }
-          },
-            e(Avatar, { name: m.name, size: 26 }),
-            e("span", { style: { fontFamily: FONT, fontSize: 13.5, color: C.text, fontWeight: 600 } }, m.name),
-            m.role === "reception" && e(Badge, { tone: "amber" }, "İnspektor")
-          ))
-        ),
-        loginSelected && e(React.Fragment, null,
-          e(Input, { label: "PIN", type: "password", value: loginPin,
-            onChange: ev => setLoginPin(ev.target.value.replace(/\D/g, "").slice(0, 6)), placeholder: "0000",
-            onKeyDown: onEnter(() => {
-              const m = state.members.find(x => x.id === loginSelected);
-              if (m && m.pin === loginPin) { setCurrentUser(m); setLoginPin(""); setLoginError(""); }
-              else setLoginError("PIN yanlışdır.");
-            }) }),
-          loginError && e("div", { style: { color: C.red, fontSize: 12.5, fontFamily: FONT } }, loginError),
-          e("button", {
-            onClick: () => {
-              const m = state.members.find(x => x.id === loginSelected);
-              if (m && m.pin === loginPin) { setCurrentUser(m); setLoginPin(""); setLoginError(""); }
-              else setLoginError("PIN yanlışdır.");
-            },
-            style: primaryBtn
-          }, "Daxil ol")
-        )
+        e(Input, { label: "Ad", value: loginName, onChange: ev => { setLoginName(ev.target.value); setLoginError(""); }, placeholder: "Adınız", onKeyDown: onEnter(attemptLogin) }),
+        e(Input, { label: "PIN", type: "password", value: loginPin,
+          onChange: ev => { setLoginPin(ev.target.value.replace(/\D/g, "").slice(0, 6)); setLoginError(""); }, placeholder: "0000",
+          onKeyDown: onEnter(attemptLogin) }),
+        loginError && e("div", { style: { color: C.red, fontSize: 12.5, fontFamily: FONT } }, loginError),
+        e("button", { onClick: attemptLogin, style: primaryBtn }, "Daxil ol")
       )
     );
   }
@@ -355,16 +402,53 @@ function App() {
   const allTasksSorted = [...state.tasks].sort((a, b) => b.createdAt - a.createdAt);
   const suggestion = pickNext(state.members, state.tasks, state.rrIndex, "strict");
 
-  function changeStatus(taskId, status) {
+  function startTask(taskId) {
+    persist(prev => ({
+      ...prev,
+      tasks: prev.tasks.map(t => t.id === taskId
+        ? { ...t, status: STATUS.DOING, startedBy: currentUser.name, startedAt: Date.now(), totalPauseMs: 0, pausedAt: null }
+        : t)
+    }));
+  }
+
+  function pauseTask(taskId) {
+    persist(prev => ({
+      ...prev,
+      tasks: prev.tasks.map(t => t.id === taskId ? { ...t, status: STATUS.PAUSED, pausedAt: Date.now() } : t)
+    }));
+  }
+
+  function resumeTask(taskId) {
     persist(prev => ({
       ...prev,
       tasks: prev.tasks.map(t => {
         if (t.id !== taskId) return t;
-        const updated = { ...t, status, updatedAt: Date.now() };
-        if (status === STATUS.DOING) updated.startedBy = currentUser.name;
-        if (status === STATUS.DONE) updated.resolvedBy = currentUser.name;
-        return updated;
+        const extraPause = t.pausedAt ? (Date.now() - t.pausedAt) : 0;
+        return { ...t, status: STATUS.DOING, totalPauseMs: (t.totalPauseMs || 0) + extraPause, pausedAt: null };
       })
+    }));
+  }
+
+  function resolveTask(taskId) {
+    persist(prev => ({
+      ...prev,
+      tasks: prev.tasks.map(t => {
+        if (t.id !== taskId) return t;
+        const now = Date.now();
+        const started = t.startedAt || now;
+        const pauseMs = (t.totalPauseMs || 0) + (t.pausedAt ? (now - t.pausedAt) : 0);
+        const durationMinutes = Math.max(0, Math.round((now - started - pauseMs) / 60000));
+        return { ...t, status: STATUS.DONE, resolvedBy: currentUser.name, resolvedAt: now, pausedAt: null, durationMinutes };
+      })
+    }));
+  }
+
+  function addComment(taskId, text) {
+    persist(prev => ({
+      ...prev,
+      tasks: prev.tasks.map(t => t.id === taskId
+        ? { ...t, comments: [...(t.comments || []), { author: currentUser.name, text, at: Date.now() }] }
+        : t)
     }));
   }
 
@@ -459,10 +543,26 @@ function App() {
     setEditingMemberId(null);
   }
 
-  const tabs = isReception
+  function sendChatMessage() {
+    if (!chatInput.trim()) return;
+    persist(prev => ({
+      ...prev,
+      chat: [...(prev.chat || []), { id: uid(), author: currentUser.name, text: chatInput.trim(), at: Date.now() }]
+    }));
+    setChatInput("");
+  }
+
+  function toggleCanCreate(id) {
+    persist(prev => ({ ...prev, members: prev.members.map(m => m.id === id ? { ...m, canCreate: !m.canCreate } : m) }));
+  }
+
+  const tabs = (isReception || currentUser.canCreate)
     ? [{ id: "new", label: "Yeni tapşırıq" }, { id: "board", label: "Növbə lövhəsi" },
-       { id: "team", label: "Komanda" }, { id: "settings", label: "Ayarlar" }, { id: "profile", label: "Profilim" }]
-    : [{ id: "mine", label: "Mənim tapşırıqlarım" }, { id: "board", label: "Ümumi lövhə" }, { id: "profile", label: "Profilim" }];
+       { id: "mine", label: "Mənim tapşırıqlarım" },
+       ...(isReception ? [{ id: "team", label: "Komanda" }, { id: "settings", label: "Ayarlar" }] : []),
+       { id: "chat", label: "Söhbət" }, { id: "profile", label: "Profilim" }]
+    : [{ id: "mine", label: "Mənim tapşırıqlarım" }, { id: "board", label: "Ümumi lövhə" },
+       { id: "chat", label: "Söhbət" }, { id: "profile", label: "Profilim" }];
 
   const sections = [];
 
@@ -475,7 +575,7 @@ function App() {
     e("div", { style: { display: "flex", alignItems: "center", gap: 10 } },
       e(Avatar, { name: currentUser.name, size: 30 }),
       e("span", { style: { fontFamily: FONT, fontSize: 13.5, color: C.text, fontWeight: 600 } }, currentUser.name),
-      e("button", { onClick: () => setCurrentUser(null), style: { ...btnStyle(C.muted), border: "none" } }, "🚪 Çıxış")
+      e("button", { onClick: () => { setCurrentUser(null); try { localStorage.removeItem("tn_userId"); } catch (e) {} }, style: { ...btnStyle(C.muted), border: "none" } }, "🚪 Çıxış")
     )
   ));
 
@@ -495,7 +595,7 @@ function App() {
     }, t.label))
   ));
 
-  if (isReception && tab === "new") {
+  if ((isReception || currentUser.canCreate) && tab === "new") {
     sections.push(e("div", { key: "new", style: { display: "flex", flexDirection: "column", gap: 14 } },
       e(Input, { label: "Başlıq", value: newTitle, onChange: ev => setNewTitle(ev.target.value), placeholder: "Məs: Qonaq otağına printer lazımdır" }),
       e("label", { style: { display: "flex", flexDirection: "column", gap: 6, fontFamily: FONT } },
@@ -540,14 +640,15 @@ function App() {
   if (tab === "board") {
     sections.push(e("div", { key: "board", style: { display: "flex", flexDirection: "column", gap: 12 } },
       allTasksSorted.length === 0 && e("div", { style: { color: C.faint, fontSize: 13.5, fontFamily: FONT } }, "Hələ tapşırıq yoxdur."),
-      allTasksSorted.map(t => e(TaskCard, { key: t.id, task: t, members: state.members }))
+      allTasksSorted.map(t => e(TaskCard, { key: t.id, task: t, members: state.members, currentUser, onComment: addComment }))
     ));
   }
 
   if (!isReception && tab === "mine") {
     sections.push(e("div", { key: "mine", style: { display: "flex", flexDirection: "column", gap: 12 } },
       myTasks.length === 0 && e("div", { style: { color: C.faint, fontSize: 13.5, fontFamily: FONT } }, "Sizə hələ tapşırıq düşməyib."),
-      myTasks.map(t => e(TaskCard, { key: t.id, task: t, members: state.members, onStatusChange: changeStatus, showAssignee: false }))
+      myTasks.map(t => e(TaskCard, { key: t.id, task: t, members: state.members, currentUser,
+        onStart: startTask, onPause: pauseTask, onResume: resumeTask, onResolve: resolveTask, onComment: addComment, showAssignee: false }))
     ));
   }
 
@@ -566,10 +667,14 @@ function App() {
                 e("button", { onClick: () => setEditingMemberId(null), style: btnStyle(C.muted) }, "✕ İmtina")
               )
             )
-          : e("div", { key: m.id, style: { display: "flex", alignItems: "center", gap: 10, background: C.surface2, border: "1px solid " + C.border, borderRadius: 9, padding: "9px 12px" } },
+          : e("div", { key: m.id, style: { display: "flex", alignItems: "center", gap: 10, background: C.surface2, border: "1px solid " + C.border, borderRadius: 9, padding: "9px 12px", flexWrap: "wrap" } },
               e("span", { style: { color: C.faint, fontFamily: FONT, fontSize: 12, width: 16 } }, i + 1),
               e(Avatar, { name: m.name, size: 26 }),
               e("span", { style: { flex: 1, fontFamily: FONT, fontSize: 13.5, color: C.text, fontWeight: 600 } }, m.name),
+              e("button", {
+                onClick: () => toggleCanCreate(m.id),
+                style: { ...btnStyle(m.canCreate ? C.green : C.faint), fontSize: 11 }
+              }, m.canCreate ? "✓ Yaza bilər" : "Yalnız qəbul edir"),
               e("button", { onClick: () => startEditMember(m), style: iconBtn }, "✎"),
               e("button", { onClick: () => moveMember(m.id, -1), style: iconBtn }, "▲"),
               e("button", { onClick: () => moveMember(m.id, 1), style: iconBtn }, "▼"),
@@ -598,6 +703,30 @@ function App() {
           e("input", { type: "radio", checked: state.defaultMode === opt.id, onChange: () => persist(prev => ({ ...prev, defaultMode: opt.id })) }), opt.label)),
       e("div", { style: { color: C.faint, fontSize: 12.5, fontFamily: FONT, marginTop: 4 } },
         "Bu, yalnız \"Yeni tapşırıq\" formasının açılış dəyəridir — hər tapşırıqda üsulu dəyişə bilərsiniz.")
+    ));
+  }
+
+  if (tab === "chat") {
+    const chatMessages = state.chat || [];
+    sections.push(e("div", { key: "chat", style: { display: "flex", flexDirection: "column", gap: 12 } },
+      e("div", { style: { display: "flex", flexDirection: "column", gap: 8, maxHeight: 420, overflowY: "auto" } },
+        chatMessages.length === 0 && e("div", { style: { color: C.faint, fontSize: 13.5, fontFamily: FONT } }, "Hələ mesaj yoxdur."),
+        chatMessages.map(msg => e("div", { key: msg.id, style: { background: C.surface2, border: "1px solid " + C.border, borderRadius: 9, padding: "8px 12px" } },
+          e("div", { style: { display: "flex", justifyContent: "space-between", gap: 8 } },
+            e("span", { style: { fontFamily: FONT, fontWeight: 700, fontSize: 12.5, color: C.text } }, msg.author),
+            e("span", { style: { fontFamily: FONT, fontSize: 11, color: C.faint } }, new Date(msg.at).toLocaleString("az-AZ"))
+          ),
+          e("div", { style: { fontFamily: FONT, fontSize: 13, color: C.muted, marginTop: 2 } }, msg.text)
+        ))
+      ),
+      e("div", { style: { display: "flex", gap: 8 } },
+        e("input", {
+          value: chatInput, onChange: ev => setChatInput(ev.target.value), placeholder: "Mesaj yaz...",
+          onKeyDown: onEnter(sendChatMessage),
+          style: { flex: 1, background: C.surface, border: "1px solid " + C.border, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 14, fontFamily: FONT, outline: "none" }
+        }),
+        e("button", { onClick: sendChatMessage, style: primaryBtn }, "Göndər")
+      )
     ));
   }
 
