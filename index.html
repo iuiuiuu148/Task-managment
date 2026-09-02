@@ -429,7 +429,8 @@ function App() {
     if (perm !== "granted") return;
     if (!messaging) return; // FCM not supported on this browser, foreground notifications still work
     try {
-      const registration = await navigator.serviceWorker.register("firebase-messaging-sw.js");
+      const registration = await navigator.serviceWorker.getRegistration("firebase-messaging-sw.js")
+        || await navigator.serviceWorker.register("firebase-messaging-sw.js");
       const token = await messaging.getToken({ vapidKey: VAPID_KEY, serviceWorkerRegistration: registration });
       if (token) {
         persist(prev => ({
@@ -622,7 +623,7 @@ root.render(e(App));
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("sw.js").catch(() => {});
+    navigator.serviceWorker.register("firebase-messaging-sw.js").catch(() => {});
   });
 }
 

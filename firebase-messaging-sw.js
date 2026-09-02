@@ -17,3 +17,9 @@ messaging.onBackgroundMessage((payload) => {
   const body = (payload.notification && payload.notification.body) || "";
   self.registration.showNotification(title, { body, icon: "icon-192.png" });
 });
+
+self.addEventListener("install", () => self.skipWaiting());
+self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));
+self.addEventListener("fetch", (e) => {
+  e.respondWith(fetch(e.request).catch(() => new Response("Offline", { status: 503 })));
+});
