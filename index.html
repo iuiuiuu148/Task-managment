@@ -383,7 +383,7 @@ function App() {
           e("div", null,
             e("div", { style: { fontFamily: DISPLAY_FONT, fontWeight: 800, fontSize: 22, color: C.text } }, "Tapşırıq Növbəsi"),
             e("div", { style: { fontFamily: FONT, fontSize: 13.5, color: C.muted, marginTop: 4 } },
-              "İlk addım: inspektor hesabı yaradın. Komanda üzvlərini sonra əlavə edə bilərsiniz.")
+              "İlk addım: admin hesabı yaradın. Komanda üzvlərini sonra əlavə edə bilərsiniz.")
           ),
           e(Input, { label: "Adınız", value: setupName, onChange: ev => setSetupName(ev.target.value), placeholder: "Məs: Aysel" }),
           e(Input, { label: "4 rəqəmli PIN", value: setupPin, onChange: ev => setSetupPin(ev.target.value.replace(/\D/g, "").slice(0, 6)), placeholder: "0000",
@@ -403,7 +403,7 @@ function App() {
               try { localStorage.setItem("tn_userId", member.id); } catch (e) {}
             },
             style: { ...primaryBtn, opacity: (!setupName.trim() || setupPin.length < 4) ? 0.5 : 1 }
-          }, "🛡 İnspektor hesabı yarat")
+          }, "🛡 Admin hesabı yarat")
         )
       );
     }
@@ -648,7 +648,7 @@ function App() {
   sections.push(e("div", { key: "header", style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
     e("div", null,
       e("div", { style: { fontFamily: DISPLAY_FONT, fontWeight: 800, fontSize: 20, color: C.text } }, "Tapşırıq Növbəsi"),
-      e("div", { style: { fontFamily: FONT, fontSize: 12.5, color: C.muted } }, isReception ? "İnspektor paneli" : "Komanda üzvü")
+      e("div", { style: { fontFamily: FONT, fontSize: 12.5, color: C.muted } }, isReception ? "Admin paneli" : "Komanda üzvü")
     ),
     e("div", { style: { display: "flex", alignItems: "center", gap: 10 } },
       e(Avatar, { name: currentUser.name, size: 30 }),
