@@ -53,7 +53,7 @@ const C = {
   amberDim: "#4A3A22", green: "#4FA97A", greenDim: "#1E3128",
   red: "#D9584C", redDim: "#3A2422",
 };
-const STATUS = { NEW: "Yeni", DOING: "Baxılır", PAUSED: "Fasilədə", DONE: "Həll edildi" };
+const STATUS = { NEW: "Yeni", DOING: "Baxılır", PAUSED: "Fasilədə", DONE: "Həll edildi", FAILED: "Həll edilmədi" };
 const PRIORITY = { NORMAL: "Adi", URGENT: "Təcili" };
 const FONT = "IBM Plex Sans, sans-serif";
 const DISPLAY_FONT = "Archivo, sans-serif";
@@ -63,7 +63,7 @@ function onEnter(fn) { return ev => { if (ev.key === "Enter") fn(); }; }
 function defaultState() { return { members: [], tasks: [], rrIndex: 0, defaultMode: "strict", chat: [] }; }
 function activeMembers(members) { return members.filter(m => m.role === "member"); }
 function openTaskCount(tasks, memberId) {
-  return tasks.filter(t => t.assignedTo === memberId && t.status !== STATUS.DONE).length;
+  return tasks.filter(t => t.assignedTo === memberId && t.status !== STATUS.DONE && t.status !== STATUS.FAILED).length;
 }
 function pickNext(members, tasks, rrIndex, mode) {
   const pool = activeMembers(members);
@@ -154,13 +154,17 @@ function formatDuration(ms) {
   return h + " saat " + (m ? m + " dəq" : "");
 }
 
-function TaskCard({ task, members, currentUser, onStart, onPause, onResume, onResolve, onComment, showAssignee }) {
+function TaskCard({ task, members, currentUser, onStart, onPause, onResume, onResolve, onFail, onComment, showAssignee }) {
   const [commentText, setCommentText] = useState("");
+  const [showFailBox, setShowFailBox] = useState(false);
+  const [failReasonText, setFailReasonText] = useState("");
   const assignee = members.find(m => m.id === task.assignedTo);
   const isPaused = task.status === STATUS.PAUSED;
   const isDoing = task.status === STATUS.DOING;
   const isNew = task.status === STATUS.NEW;
   const isDone = task.status === STATUS.DONE;
+  const isFailed = task.status === STATUS.FAILED;
+  const isTerminal = isDone || isFailed;
 
   const children = [
     e("div", { key: "top", style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 } },
@@ -176,7 +180,9 @@ function TaskCard({ task, members, currentUser, onStart, onPause, onResume, onRe
       task.createdBy && e("div", { style: { fontSize: 11.5, color: C.faint, fontFamily: FONT } },
         "Yaradıb: " + task.createdBy + (task.createdAt ? " · " + new Date(task.createdAt).toLocaleString("az-AZ") : "")),
       task.status === STATUS.DONE && task.resolvedBy && e("div", { style: { fontSize: 11.5, color: C.green, fontFamily: FONT } },
-        "Həll edib: " + task.resolvedBy + (typeof task.durationMinutes === "number" ? " · " + formatDuration(task.durationMinutes * 60000) + " çəkib" : ""))
+        "Həll edib: " + task.resolvedBy + (typeof task.durationMinutes === "number" ? " · " + formatDuration(task.durationMinutes * 60000) + " çəkib" : "")),
+      isFailed && e("div", { style: { fontSize: 11.5, color: C.red, fontFamily: FONT } },
+        "Həll edilmədi (" + (task.failedBy || "") + "): " + (task.failReason || "səbəb qeyd edilməyib"))
     ),
     e("div", { key: "meta", style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginTop: 2 } },
       e("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
@@ -185,16 +191,35 @@ function TaskCard({ task, members, currentUser, onStart, onPause, onResume, onRe
           e("span", { style: { fontSize: 12.5, color: C.muted, fontFamily: FONT } }, assignee.name)
         )
       ),
-      e(Badge, { tone: isDone ? "green" : (isDoing ? "amber" : (isPaused ? "red" : "neutral")) }, task.status)
+      e(Badge, { tone: isDone ? "green" : (isFailed ? "red" : (isDoing ? "amber" : (isPaused ? "red" : "neutral"))) }, task.status)
     )
   ];
 
-  if (!isDone && (onStart || onPause || onResume || onResolve)) {
+  if (!isTerminal && (onStart || onPause || onResume || onResolve || onFail)) {
     children.push(e("div", { key: "actions", style: { display: "flex", gap: 8, marginTop: 2, flexWrap: "wrap" } },
       isNew && onStart && e("button", { onClick: () => onStart(task.id), style: btnStyle(C.amber) }, "▶ Başla"),
       isDoing && onPause && e("button", { onClick: () => onPause(task.id), style: btnStyle(C.muted) }, "⏸ Fasilə ver"),
       isDoing && onResolve && e("button", { onClick: () => onResolve(task.id), style: btnStyle(C.green) }, "✓ Həll et"),
-      isPaused && onResume && e("button", { onClick: () => onResume(task.id), style: btnStyle(C.amber) }, "▶ Davam et")
+      isPaused && onResume && e("button", { onClick: () => onResume(task.id), style: btnStyle(C.amber) }, "▶ Davam et"),
+      (isDoing || isPaused) && onFail && e("button", { onClick: () => setShowFailBox(v => !v), style: btnStyle(C.red) }, "✗ Həll edilmədi")
+    ));
+  }
+
+  if (showFailBox && onFail) {
+    children.push(e("div", { key: "failbox", style: { display: "flex", flexDirection: "column", gap: 6, background: C.redDim, borderRadius: 8, padding: 10 } },
+      e("div", { style: { fontFamily: FONT, fontSize: 12, color: C.red, fontWeight: 600 } }, "Niyə həll edilmədi?"),
+      e("input", {
+        value: failReasonText, onChange: ev => setFailReasonText(ev.target.value), placeholder: "Səbəbi yazın...",
+        style: { background: C.surface, border: "1px solid " + C.border, borderRadius: 7, padding: "7px 10px", color: C.text, fontSize: 12.5, fontFamily: FONT, outline: "none" }
+      }),
+      e("div", { style: { display: "flex", gap: 8 } },
+        e("button", {
+          onClick: () => { if (failReasonText.trim()) { onFail(task.id, failReasonText.trim()); setShowFailBox(false); setFailReasonText(""); } },
+          disabled: !failReasonText.trim(),
+          style: { ...btnStyle(C.red), opacity: !failReasonText.trim() ? 0.5 : 1 }
+        }, "Təsdiqlə"),
+        e("button", { onClick: () => { setShowFailBox(false); setFailReasonText(""); }, style: btnStyle(C.muted) }, "İmtina")
+      )
     ));
   }
 
@@ -452,6 +477,16 @@ function App() {
     }));
   }
 
+  function failTask(taskId, reason) {
+    persist(prev => ({
+      ...prev,
+      tasks: prev.tasks.map(t => t.id === taskId
+        ? { ...t, status: STATUS.FAILED, failedBy: currentUser.name, failedAt: Date.now(), failReason: reason,
+            comments: [...(t.comments || []), { author: currentUser.name, text: "Həll edilmədi: " + reason, at: Date.now() }] }
+        : t)
+    }));
+  }
+
   function addComment(taskId, text) {
     persist(prev => ({
       ...prev,
@@ -681,7 +716,7 @@ function App() {
     sections.push(e("div", { key: "mine", style: { display: "flex", flexDirection: "column", gap: 12 } },
       myTasks.length === 0 && e("div", { style: { color: C.faint, fontSize: 13.5, fontFamily: FONT } }, "Sizə hələ tapşırıq düşməyib."),
       myTasks.map(t => e(TaskCard, { key: t.id, task: t, members: state.members, currentUser,
-        onStart: startTask, onPause: pauseTask, onResume: resumeTask, onResolve: resolveTask, onComment: addComment, showAssignee: false }))
+        onStart: startTask, onPause: pauseTask, onResume: resumeTask, onResolve: resolveTask, onFail: failTask, onComment: addComment, showAssignee: false }))
     ));
   }
 
