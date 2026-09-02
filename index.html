@@ -210,6 +210,7 @@ function App() {
   const [notifPermission, setNotifPermission] = useState(
     (typeof Notification !== "undefined") ? Notification.permission : "unsupported"
   );
+  const [pushDebug, setPushDebug] = useState("");
   const prevTaskIdsRef = useRef(null);
 
   useEffect(() => {
@@ -423,24 +424,34 @@ function App() {
   function startEditMember(m) { setEditingMemberId(m.id); setEditMemberName(m.name); setEditMemberPin(m.pin); }
 
   async function enablePush() {
-    if (typeof Notification === "undefined") { setNotifPermission("unsupported"); return; }
+    setPushDebug("Başlanır...");
+    if (typeof Notification === "undefined") { setNotifPermission("unsupported"); setPushDebug("Bu brauzer Notification API dəstəkləmir."); return; }
     const perm = await Notification.requestPermission();
     setNotifPermission(perm);
-    if (perm !== "granted") return;
-    if (!messaging) return; // FCM not supported on this browser, foreground notifications still work
+    if (perm !== "granted") { setPushDebug("İcazə verilmədi: " + perm); return; }
+    if (!messaging) { setPushDebug("Bu brauzerdə FCM dəstəklənmir (yalnız açıq-tab bildirişi işləyəcək)."); return; }
     try {
+      setPushDebug("Service worker qeydiyyatı...");
       const registration = await navigator.serviceWorker.getRegistration("firebase-messaging-sw.js")
         || await navigator.serviceWorker.register("firebase-messaging-sw.js");
+      await navigator.serviceWorker.ready;
+      setPushDebug("Token alınır...");
       const token = await messaging.getToken({ vapidKey: VAPID_KEY, serviceWorkerRegistration: registration });
       if (token) {
+        setPushDebug("Token alındı: " + token.slice(0, 18) + "... Firestore-a yazılır.");
         persist(prev => ({
           ...prev,
           members: prev.members.map(m => m.id === currentUser.id
             ? { ...m, fcmTokens: Array.from(new Set([...(m.fcmTokens || []), token])) }
             : m)
         }));
+        setPushDebug("✓ Uğurlu — token yaddaşa yazıldı: " + token.slice(0, 18) + "...");
+      } else {
+        setPushDebug("Token alınmadı (boş qayıtdı).");
       }
-    } catch (err) { console.error("FCM token error", err); }
+    } catch (err) {
+      setPushDebug("Xəta: " + (err && err.message ? err.message : String(err)));
+    }
   }
   function saveEditMember() {
     if (!editMemberName.trim() || editMemberPin.length < 4) return;
@@ -602,12 +613,14 @@ function App() {
       e("div", { style: { height: 1, background: C.border, margin: "8px 0" } }),
       e("div", { style: { fontFamily: FONT, fontSize: 13, color: C.muted, fontWeight: 600 } }, "Bildirişlər"),
       notifPermission === "granted" && e("div", { style: { color: C.green, fontSize: 13, fontFamily: FONT } }, "✓ Bildirişlər aktivdir."),
+      notifPermission === "granted" && e("button", { onClick: enablePush, style: btnStyle(C.amber) }, "🔄 Token-i yenilə / diaqnostika"),
       notifPermission === "denied" && e("div", { style: { color: C.red, fontSize: 13, fontFamily: FONT } }, "Bildirişlər bloklanıb — brauzerin sayt ayarlarından əl ilə icazə verməlisiniz."),
       notifPermission === "unsupported" && e("div", { style: { color: C.faint, fontSize: 13, fontFamily: FONT } }, "Bu brauzer bildirişi dəstəkləmir."),
       notifPermission === "default" && e("button", {
         onClick: enablePush,
         style: primaryBtn
-      }, "🔔 Bildirişləri aktivləşdir")
+      }, "🔔 Bildirişləri aktivləşdir"),
+      pushDebug && e("div", { style: { color: C.muted, fontSize: 11.5, fontFamily: "monospace", wordBreak: "break-all", background: C.surface2, padding: 8, borderRadius: 6 } }, pushDebug)
     ));
   }
 
