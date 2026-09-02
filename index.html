@@ -253,6 +253,7 @@ function App() {
   const [editMemberName, setEditMemberName] = useState("");
   const [editMemberPin, setEditMemberPin] = useState("");
   const [chatInput, setChatInput] = useState("");
+  const [chatPartnerId, setChatPartnerId] = useState(null);
   const [notifPermission, setNotifPermission] = useState(
     (typeof Notification !== "undefined") ? Notification.permission : "unsupported"
   );
@@ -544,10 +545,15 @@ function App() {
   }
 
   function sendChatMessage() {
-    if (!chatInput.trim()) return;
+    if (!chatInput.trim() || !chatPartnerId) return;
+    const partner = state.members.find(m => m.id === chatPartnerId);
     persist(prev => ({
       ...prev,
-      chat: [...(prev.chat || []), { id: uid(), author: currentUser.name, text: chatInput.trim(), at: Date.now() }]
+      chat: [...(prev.chat || []), {
+        id: uid(), senderId: currentUser.id, senderName: currentUser.name,
+        recipientId: chatPartnerId, recipientName: partner ? partner.name : "?",
+        text: chatInput.trim(), at: Date.now()
+      }]
     }));
     setChatInput("");
   }
@@ -707,25 +713,49 @@ function App() {
   }
 
   if (tab === "chat") {
-    const chatMessages = state.chat || [];
+    const others = state.members.filter(m => m.id !== currentUser.id);
+    const thread = (state.chat || []).filter(m =>
+      (m.senderId === currentUser.id && m.recipientId === chatPartnerId) ||
+      (m.senderId === chatPartnerId && m.recipientId === currentUser.id)
+    );
+    const partner = others.find(m => m.id === chatPartnerId);
     sections.push(e("div", { key: "chat", style: { display: "flex", flexDirection: "column", gap: 12 } },
-      e("div", { style: { display: "flex", flexDirection: "column", gap: 8, maxHeight: 420, overflowY: "auto" } },
-        chatMessages.length === 0 && e("div", { style: { color: C.faint, fontSize: 13.5, fontFamily: FONT } }, "Hələ mesaj yoxdur."),
-        chatMessages.map(msg => e("div", { key: msg.id, style: { background: C.surface2, border: "1px solid " + C.border, borderRadius: 9, padding: "8px 12px" } },
-          e("div", { style: { display: "flex", justifyContent: "space-between", gap: 8 } },
-            e("span", { style: { fontFamily: FONT, fontWeight: 700, fontSize: 12.5, color: C.text } }, msg.author),
-            e("span", { style: { fontFamily: FONT, fontSize: 11, color: C.faint } }, new Date(msg.at).toLocaleString("az-AZ"))
-          ),
-          e("div", { style: { fontFamily: FONT, fontSize: 13, color: C.muted, marginTop: 2 } }, msg.text)
+      e("div", { style: { fontFamily: FONT, fontSize: 12.5, color: C.muted, fontWeight: 600 } }, "Kiminlə yazmaq istəyirsiniz?"),
+      e("div", { style: { display: "flex", flexWrap: "wrap", gap: 8 } },
+        others.length === 0 && e("div", { style: { color: C.faint, fontSize: 13, fontFamily: FONT } }, "Başqa istifadəçi yoxdur."),
+        others.map(m => e("button", {
+          key: m.id, onClick: () => setChatPartnerId(m.id),
+          style: { display: "flex", alignItems: "center", gap: 7, padding: "6px 11px 6px 6px", borderRadius: 8,
+            border: "1.5px solid " + (chatPartnerId === m.id ? C.amber : C.border),
+            background: chatPartnerId === m.id ? C.amberDim : "transparent", cursor: "pointer" }
+        },
+          e(Avatar, { name: m.name, size: 22 }),
+          e("span", { style: { fontFamily: FONT, fontSize: 13, color: C.text } }, m.name)
         ))
       ),
-      e("div", { style: { display: "flex", gap: 8 } },
-        e("input", {
-          value: chatInput, onChange: ev => setChatInput(ev.target.value), placeholder: "Mesaj yaz...",
-          onKeyDown: onEnter(sendChatMessage),
-          style: { flex: 1, background: C.surface, border: "1px solid " + C.border, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 14, fontFamily: FONT, outline: "none" }
-        }),
-        e("button", { onClick: sendChatMessage, style: primaryBtn }, "Göndər")
+      chatPartnerId && e(React.Fragment, null,
+        e("div", { style: { height: 1, background: C.border } }),
+        e("div", { style: { fontFamily: FONT, fontSize: 13, color: C.text, fontWeight: 700 } }, partner ? partner.name + " ilə söhbət" : ""),
+        e("div", { style: { display: "flex", flexDirection: "column", gap: 8, maxHeight: 360, overflowY: "auto" } },
+          thread.length === 0 && e("div", { style: { color: C.faint, fontSize: 13, fontFamily: FONT } }, "Hələ mesaj yoxdur."),
+          thread.map(msg => e("div", {
+            key: msg.id,
+            style: { alignSelf: msg.senderId === currentUser.id ? "flex-end" : "flex-start",
+              maxWidth: "80%", background: msg.senderId === currentUser.id ? C.amberDim : C.surface2,
+              border: "1px solid " + C.border, borderRadius: 9, padding: "8px 12px" }
+          },
+            e("div", { style: { fontFamily: FONT, fontSize: 13, color: C.text } }, msg.text),
+            e("div", { style: { fontFamily: FONT, fontSize: 10.5, color: C.faint, marginTop: 3 } }, new Date(msg.at).toLocaleString("az-AZ"))
+          ))
+        ),
+        e("div", { style: { display: "flex", gap: 8 } },
+          e("input", {
+            value: chatInput, onChange: ev => setChatInput(ev.target.value), placeholder: "Mesaj yaz...",
+            onKeyDown: onEnter(sendChatMessage),
+            style: { flex: 1, background: C.surface, border: "1px solid " + C.border, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 14, fontFamily: FONT, outline: "none" }
+          }),
+          e("button", { onClick: sendChatMessage, style: primaryBtn }, "Göndər")
+        )
       )
     ));
   }
