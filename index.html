@@ -16,11 +16,18 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js"></script>
+<script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
   * { box-sizing: border-box; }
   body { margin: 0; background: #12161D; }
   input, textarea { font-family: 'IBM Plex Sans', sans-serif; }
+  @media print {
+    body * { visibility: hidden; }
+    #print-area, #print-area * { visibility: visible; color: #000 !important; }
+    #print-area { position: absolute; top: 0; left: 0; width: 100%; background: #fff !important; }
+    #print-area .no-print { display: none !important; }
+  }
 </style>
 </head>
 <body>
@@ -820,10 +827,38 @@ function App() {
       );
     }
 
-    sections.push(e("div", { key: "reports", style: { display: "flex", flexDirection: "column", gap: 20 } },
-      e("div", { style: { display: "flex", gap: 8 } },
+    function exportExcel() {
+      const rows = [["Başlıq", "Şöbə", "Otaq", "Əməkdaş", "Prioritet", "Status", "Yaradıb", "Yaradılma tarixi", "Təyin olunan", "Başlayan", "Nəticələndirən", "Vaxt (dəq)", "Səbəb (həll edilmədisə)"]];
+      filteredTasks.forEach(t => {
+        const assignee = state.members.find(m => m.id === t.assignedTo);
+        rows.push([
+          t.title, t.department || "", t.room || "", t.requester || "", t.priority, t.status, t.createdBy || "",
+          t.createdAt ? new Date(t.createdAt).toLocaleString("az-AZ") : "", assignee ? assignee.name : "", t.startedBy || "",
+          t.resolvedBy || t.failedBy || "", typeof t.durationMinutes === "number" ? t.durationMinutes : "", t.failReason || ""
+        ]);
+      });
+      const ws1 = XLSX.utils.aoa_to_sheet(rows);
+      const summaryRows = [
+        ["Dövr", reportRange === "month" ? "Bu ay" : "Bütün zamanlar"],
+        ["Ümumi tapşırıq", total], ["Həll edildi", doneTasks.length], ["Həll edilmədi", failedTasks.length],
+        ["Açıq/davam edir", openCount], ["Orta həll vaxtı (dəq)", avgMinutes], ["Ümumi sərf olunan vaxt (dəq)", totalMinutes],
+        [], ["Şöbə", "Tapşırıq sayı"], ...deptList.map(([n, c]) => [n, c]),
+        [], ["Komanda üzvü", "Həll etdiyi say", "Ümumi vaxt (dəq)"], ...memberList.map(([n, d]) => [n, d.count, d.minutes])
+      ];
+      const ws2 = XLSX.utils.aoa_to_sheet(summaryRows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws2, "Xülasə");
+      XLSX.utils.book_append_sheet(wb, ws1, "Tapşırıqlar");
+      XLSX.writeFile(wb, "hesabat-" + (reportRange === "month" ? "bu-ay" : "butun-zamanlar") + ".xlsx");
+    }
+
+    sections.push(e("div", { key: "reports", id: "print-area", style: { display: "flex", flexDirection: "column", gap: 20 } },
+      e("div", { className: "no-print", style: { display: "flex", gap: 8, flexWrap: "wrap" } },
         e("button", { onClick: () => setReportRange("month"), style: { ...btnStyle(C.amber), background: reportRange === "month" ? C.amberDim : "transparent" } }, "Bu ay"),
-        e("button", { onClick: () => setReportRange("all"), style: { ...btnStyle(C.amber), background: reportRange === "all" ? C.amberDim : "transparent" } }, "Bütün zamanlar")
+        e("button", { onClick: () => setReportRange("all"), style: { ...btnStyle(C.amber), background: reportRange === "all" ? C.amberDim : "transparent" } }, "Bütün zamanlar"),
+        e("span", { style: { flex: 1 } }),
+        e("button", { onClick: exportExcel, style: btnStyle(C.green) }, "📊 Excel-ə ixrac et"),
+        e("button", { onClick: () => window.print(), style: btnStyle(C.muted) }, "🖨 PDF (çap et / saxla)")
       ),
       e("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10 } },
         [
