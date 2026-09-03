@@ -60,7 +60,7 @@ const DISPLAY_FONT = "Archivo, sans-serif";
 
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
 function onEnter(fn) { return ev => { if (ev.key === "Enter") fn(); }; }
-function defaultState() { return { members: [], tasks: [], rrIndex: 0, defaultMode: "strict", chat: [] }; }
+function defaultState() { return { members: [], tasks: [], rrIndex: 0, defaultMode: "strict", chat: [], departments: [] }; }
 function activeMembers(members) { return members.filter(m => m.role === "member"); }
 function openTaskCount(tasks, memberId) {
   return tasks.filter(t => t.assignedTo === memberId && t.status !== STATUS.DONE && t.status !== STATUS.FAILED).length;
@@ -178,7 +178,8 @@ function TaskCard({ task, members, currentUser, onStart, onPause, onResume, onRe
       )
     ),
     task.desc && e("div", { key: "desc", style: { fontSize: 13, color: C.muted, fontFamily: FONT, lineHeight: 1.5 } }, task.desc),
-    (task.requester || task.room) && e("div", { key: "info", style: { display: "flex", flexWrap: "wrap", gap: 6 } },
+    (task.requester || task.room || task.department) && e("div", { key: "info", style: { display: "flex", flexWrap: "wrap", gap: 6 } },
+      task.department && e(Badge, { tone: "amber" }, "🏢 " + task.department),
       task.requester && e(Badge, { tone: "neutral" }, "👤 " + task.requester),
       task.room && e(Badge, { tone: "neutral" }, "🚪 Otaq " + task.room)
     ),
@@ -272,6 +273,9 @@ function App() {
   const [newDesc, setNewDesc] = useState("");
   const [newRequester, setNewRequester] = useState("");
   const [newRoom, setNewRoom] = useState("");
+  const [newDepartment, setNewDepartment] = useState("");
+  const [deptInput, setDeptInput] = useState("");
+  const [reportRange, setReportRange] = useState("month");
   const [newPriority, setNewPriority] = useState(PRIORITY.NORMAL);
   const [assignMode, setAssignMode] = useState("strict");
   const [manualPick, setManualPick] = useState(null);
@@ -493,6 +497,17 @@ function App() {
     }));
   }
 
+  function addDepartment() {
+    const name = deptInput.trim();
+    if (!name || (state.departments || []).includes(name)) return;
+    persist(prev => ({ ...prev, departments: [...(prev.departments || []), name] }));
+    setDeptInput("");
+  }
+
+  function removeDepartment(name) {
+    persist(prev => ({ ...prev, departments: (prev.departments || []).filter(d => d !== name) }));
+  }
+
   function deleteTask(taskId) {
     persist(prev => ({ ...prev, tasks: prev.tasks.filter(t => t.id !== taskId) }));
   }
@@ -535,11 +550,11 @@ function App() {
         }
       }
       const task = { id: uid(), title: newTitle.trim(), desc: newDesc.trim(), priority: newPriority,
-        requester: newRequester.trim(), room: newRoom.trim(),
+        requester: newRequester.trim(), room: newRoom.trim(), department: newDepartment || null,
         status: STATUS.NEW, assignedTo, createdBy: currentUser.name, createdAt: Date.now() };
       return { ...prev, tasks: [...prev.tasks, task], rrIndex };
     });
-    setNewTitle(""); setNewDesc(""); setNewRequester(""); setNewRoom(""); setNewPriority(PRIORITY.NORMAL); setManualPick(null); setAssignMode("strict");
+    setNewTitle(""); setNewDesc(""); setNewRequester(""); setNewRoom(""); setNewDepartment(""); setNewPriority(PRIORITY.NORMAL); setManualPick(null); setAssignMode("strict");
   }
 
   function addMember() {
@@ -649,7 +664,7 @@ function App() {
 
   const tabs = isReception
     ? [{ id: "new", label: "Yeni tapşırıq" }, { id: "board", label: "Növbə lövhəsi" },
-       { id: "mine", label: "Mənim tapşırıqlarım" },
+       { id: "mine", label: "Mənim tapşırıqlarım" }, { id: "reports", label: "Hesabatlar" },
        { id: "team", label: "Komanda" }, { id: "settings", label: "Ayarlar" },
        { id: "chat", label: "Söhbət" }, { id: "profile", label: "Profilim" }]
     : isRequesterOnly
@@ -711,8 +726,17 @@ function App() {
             color: C.text, fontSize: 14, fontFamily: FONT, outline: "none", resize: "vertical" } })
       ),
       e("div", { style: { display: "flex", gap: 10 } },
-        e("div", { style: { flex: 1 } }, e(Input, { label: "Hansı əməkdaşa dəstək lazımdır", value: newRequester, onChange: ev => setNewRequester(ev.target.value), placeholder: "Məs: Elvin (Mühasibatlıq)" })),
+        e("div", { style: { flex: 1 } }, e(Input, { label: "Hansı əməkdaşa dəstək lazımdır", value: newRequester, onChange: ev => setNewRequester(ev.target.value), placeholder: "Məs: Elvin" })),
         e("div", { style: { flex: 1 } }, e(Input, { label: "Otaq nömrəsi", value: newRoom, onChange: ev => setNewRoom(ev.target.value), placeholder: "Məs: 214" }))
+      ),
+      (state.departments || []).length > 0 && e("div", { style: { display: "flex", flexDirection: "column", gap: 6 } },
+        e("span", { style: { fontSize: 12.5, color: C.muted, fontWeight: 600, fontFamily: FONT } }, "Şöbə (istəyə bağlı)"),
+        e("div", { style: { display: "flex", flexWrap: "wrap", gap: 8 } },
+          state.departments.map(d => e("button", {
+            key: d, onClick: () => setNewDepartment(newDepartment === d ? "" : d),
+            style: { ...btnStyle(newDepartment === d ? C.amber : C.muted), background: newDepartment === d ? C.amberDim : "transparent" }
+          }, d))
+        )
       ),
       e("div", { style: { display: "flex", gap: 8 } },
         Object.values(PRIORITY).map(p => e("button", {
@@ -756,6 +780,81 @@ function App() {
       myTasks.length === 0 && e("div", { style: { color: C.faint, fontSize: 13.5, fontFamily: FONT } }, "Sizə hələ tapşırıq düşməyib."),
       myTasks.map(t => e(TaskCard, { key: t.id, task: t, members: state.members, currentUser,
         onStart: startTask, onPause: pauseTask, onResume: resumeTask, onResolve: resolveTask, onFail: failTask, onComment: addComment, showAssignee: false }))
+    ));
+  }
+
+  if (isReception && tab === "reports") {
+    const now = new Date();
+    const isThisMonth = ts => { const d = new Date(ts); return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth(); };
+    const filteredTasks = reportRange === "month" ? state.tasks.filter(t => isThisMonth(t.createdAt)) : state.tasks;
+    const doneTasks = filteredTasks.filter(t => t.status === STATUS.DONE);
+    const failedTasks = filteredTasks.filter(t => t.status === STATUS.FAILED);
+    const total = filteredTasks.length;
+    const openCount = total - doneTasks.length - failedTasks.length;
+    const totalMinutes = doneTasks.reduce((s, t) => s + (t.durationMinutes || 0), 0);
+    const avgMinutes = doneTasks.length ? Math.round(totalMinutes / doneTasks.length) : 0;
+
+    const deptMap = {};
+    filteredTasks.forEach(t => { const k = t.department || "Qeyd olunmayıb"; deptMap[k] = (deptMap[k] || 0) + 1; });
+    const deptList = Object.entries(deptMap).sort((a, b) => b[1] - a[1]);
+    const maxDeptCount = deptList.length ? deptList[0][1] : 1;
+
+    const memberMap = {};
+    doneTasks.forEach(t => {
+      const k = t.resolvedBy || "Naməlum";
+      if (!memberMap[k]) memberMap[k] = { count: 0, minutes: 0 };
+      memberMap[k].count++; memberMap[k].minutes += (t.durationMinutes || 0);
+    });
+    const memberList = Object.entries(memberMap).sort((a, b) => b[1].count - a[1].count);
+    const maxMemberCount = memberList.length ? memberList[0][1].count : 1;
+
+    function BarRow(label, value, max, tone, sub) {
+      return e("div", { key: label, style: { display: "flex", flexDirection: "column", gap: 3 } },
+        e("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 12.5, fontFamily: FONT } },
+          e("span", { style: { color: C.text } }, label),
+          e("span", { style: { color: C.muted } }, sub || value)
+        ),
+        e("div", { style: { background: C.surface, borderRadius: 5, height: 8, overflow: "hidden" } },
+          e("div", { style: { width: (max ? (value / max * 100) : 0) + "%", height: "100%", background: tone || C.amber, borderRadius: 5 } })
+        )
+      );
+    }
+
+    sections.push(e("div", { key: "reports", style: { display: "flex", flexDirection: "column", gap: 20 } },
+      e("div", { style: { display: "flex", gap: 8 } },
+        e("button", { onClick: () => setReportRange("month"), style: { ...btnStyle(C.amber), background: reportRange === "month" ? C.amberDim : "transparent" } }, "Bu ay"),
+        e("button", { onClick: () => setReportRange("all"), style: { ...btnStyle(C.amber), background: reportRange === "all" ? C.amberDim : "transparent" } }, "Bütün zamanlar")
+      ),
+      e("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10 } },
+        [
+          ["Ümumi tapşırıq", total, C.text],
+          ["Həll edildi", doneTasks.length, C.green],
+          ["Həll edilmədi", failedTasks.length, C.red],
+          ["Açıq / davam edir", openCount, C.amber],
+          ["Orta həll vaxtı", formatDuration(avgMinutes * 60000), C.muted],
+          ["Ümumi sərf olunan vaxt", formatDuration(totalMinutes * 60000), C.muted]
+        ].map(([label, val, color]) => e("div", { key: label, style: { background: C.surface2, border: "1px solid " + C.border, borderRadius: 10, padding: "12px 14px" } },
+          e("div", { style: { fontFamily: FONT, fontSize: 11.5, color: C.muted } }, label),
+          e("div", { style: { fontFamily: DISPLAY_FONT, fontWeight: 800, fontSize: 20, color: color, marginTop: 3 } }, val)
+        ))
+      ),
+      e("div", null,
+        e("div", { style: { fontFamily: FONT, fontSize: 13, color: C.text, fontWeight: 700, marginBottom: 10 } }, "Ən çox müraciət edən şöbələr"),
+        deptList.length === 0
+          ? e("div", { style: { color: C.faint, fontSize: 13, fontFamily: FONT } }, "Bu dövrdə məlumat yoxdur.")
+          : e("div", { style: { display: "flex", flexDirection: "column", gap: 10 } },
+              deptList.slice(0, 8).map(([name, count]) => BarRow(name, count, maxDeptCount, C.amber))
+            )
+      ),
+      e("div", null,
+        e("div", { style: { fontFamily: FONT, fontSize: 13, color: C.text, fontWeight: 700, marginBottom: 10 } }, "Komanda performansı (həll edilən tapşırıqlar)"),
+        memberList.length === 0
+          ? e("div", { style: { color: C.faint, fontSize: 13, fontFamily: FONT } }, "Bu dövrdə həll edilmiş tapşırıq yoxdur.")
+          : e("div", { style: { display: "flex", flexDirection: "column", gap: 10 } },
+              memberList.map(([name, d]) => BarRow(name, d.count, maxMemberCount, C.green,
+                d.count + " ədəd · " + formatDuration(d.minutes * 60000) + " ümumi"))
+            )
+      )
     ));
   }
 
@@ -818,6 +917,23 @@ function App() {
           e("input", { type: "radio", checked: state.defaultMode === opt.id, onChange: () => persist(prev => ({ ...prev, defaultMode: opt.id })) }), opt.label)),
       e("div", { style: { color: C.faint, fontSize: 12.5, fontFamily: FONT, marginTop: 4 } },
         "Bu, yalnız \"Yeni tapşırıq\" formasının açılış dəyəridir — hər tapşırıqda üsulu dəyişə bilərsiniz."),
+      e("div", { style: { height: 1, background: C.border, margin: "10px 0" } }),
+      e("div", { style: { fontFamily: FONT, fontSize: 13, color: C.text, fontWeight: 600 } }, "Şöbələr"),
+      e("div", { style: { color: C.faint, fontSize: 12, fontFamily: FONT } }, "Tapşırıq yaradarkən seçilə bilən şöbə siyahısı — hesabatlarda qruplaşdırmaq üçün istifadə olunur."),
+      e("div", { style: { display: "flex", flexWrap: "wrap", gap: 8 } },
+        (state.departments || []).length === 0 && e("div", { style: { color: C.faint, fontSize: 12.5, fontFamily: FONT } }, "Hələ şöbə əlavə edilməyib."),
+        (state.departments || []).map(d => e("span", {
+          key: d, style: { display: "flex", alignItems: "center", gap: 6, background: C.surface2, border: "1px solid " + C.border, borderRadius: 7, padding: "5px 6px 5px 10px", fontSize: 12.5, fontFamily: FONT, color: C.text }
+        }, d, e("button", { onClick: () => removeDepartment(d), style: { ...iconBtn, fontSize: 12, color: C.red } }, "✕")))
+      ),
+      e("div", { style: { display: "flex", gap: 8 } },
+        e("input", {
+          value: deptInput, onChange: ev => setDeptInput(ev.target.value), placeholder: "Yeni şöbə adı (məs. Mühasibatlıq)",
+          onKeyDown: onEnter(addDepartment),
+          style: { flex: 1, background: C.surface, border: "1px solid " + C.border, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 14, fontFamily: FONT, outline: "none" }
+        }),
+        e("button", { onClick: addDepartment, style: btnStyle(C.amber) }, "+ Əlavə et")
+      ),
       e("div", { style: { height: 1, background: C.border, margin: "10px 0" } }),
       e("div", { style: { fontFamily: FONT, fontSize: 13, color: C.red, fontWeight: 600 } }, "Test datasının təmizlənməsi"),
       e("div", { style: { color: C.faint, fontSize: 12, fontFamily: FONT } }, "Ciddi istifadəyə keçməzdən əvvəl sınaq tapşırıqlarını/mesajlarını silin. Bu geri qaytarılmır."),
