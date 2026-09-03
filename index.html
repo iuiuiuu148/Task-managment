@@ -282,7 +282,9 @@ function App() {
   const [newRoom, setNewRoom] = useState("");
   const [newDepartment, setNewDepartment] = useState("");
   const [deptInput, setDeptInput] = useState("");
-  const [reportRange, setReportRange] = useState("month");
+  const [reportStart, setReportStart] = useState(() => { const d = new Date(); d.setDate(1); return d.toISOString().slice(0, 10); });
+  const [reportEnd, setReportEnd] = useState(() => new Date().toISOString().slice(0, 10));
+  const [reportMemberFilter, setReportMemberFilter] = useState("all");
   const [newPriority, setNewPriority] = useState(PRIORITY.NORMAL);
   const [assignMode, setAssignMode] = useState("strict");
   const [manualPick, setManualPick] = useState(null);
@@ -791,9 +793,11 @@ function App() {
   }
 
   if (isReception && tab === "reports") {
-    const now = new Date();
-    const isThisMonth = ts => { const d = new Date(ts); return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth(); };
-    const filteredTasks = reportRange === "month" ? state.tasks.filter(t => isThisMonth(t.createdAt)) : state.tasks;
+    const rangeStartMs = new Date(reportStart + "T00:00:00").getTime();
+    const rangeEndMs = new Date(reportEnd + "T23:59:59").getTime();
+    let filteredTasks = state.tasks.filter(t => t.createdAt >= rangeStartMs && t.createdAt <= rangeEndMs);
+    if (reportMemberFilter !== "all") filteredTasks = filteredTasks.filter(t => t.assignedTo === reportMemberFilter);
+
     const doneTasks = filteredTasks.filter(t => t.status === STATUS.DONE);
     const failedTasks = filteredTasks.filter(t => t.status === STATUS.FAILED);
     const total = filteredTasks.length;
@@ -814,16 +818,6 @@ function App() {
     });
     const memberList = Object.entries(memberMap).sort((a, b) => b[1].count - a[1].count);
     const maxMemberCount = memberList.length ? memberList[0][1].count : 1;
-
-    const dayMap = {};
-    [...doneTasks, ...failedTasks].forEach(t => {
-      const ts = t.resolvedAt || t.failedAt || t.createdAt;
-      const key = new Date(ts).toISOString().slice(0, 10);
-      if (!dayMap[key]) dayMap[key] = { done: 0, failed: 0, minutes: 0 };
-      if (t.status === STATUS.DONE) { dayMap[key].done++; dayMap[key].minutes += (t.durationMinutes || 0); }
-      else dayMap[key].failed++;
-    });
-    const dayList = Object.entries(dayMap).sort((a, b) => b[0].localeCompare(a[0]));
 
     function BarRow(label, value, max, tone, sub) {
       return e("div", { key: label, style: { display: "flex", flexDirection: "column", gap: 3 } },
@@ -849,7 +843,8 @@ function App() {
       });
       const ws1 = XLSX.utils.aoa_to_sheet(rows);
       const summaryRows = [
-        ["Dövr", reportRange === "month" ? "Bu ay" : "Bütün zamanlar"],
+        ["Dövr", reportStart + " — " + reportEnd],
+        ["Üzv filtri", reportMemberFilter === "all" ? "Hamısı" : (state.members.find(m => m.id === reportMemberFilter) || {}).name || ""],
         ["Ümumi tapşırıq", total], ["Həll edildi", doneTasks.length], ["Həll edilmədi", failedTasks.length],
         ["Açıq/davam edir", openCount], ["Orta həll vaxtı (dəq)", avgMinutes], ["Ümumi sərf olunan vaxt (dəq)", totalMinutes],
         [], ["Şöbə", "Tapşırıq sayı"], ...deptList.map(([n, c]) => [n, c]),
@@ -859,16 +854,29 @@ function App() {
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws2, "Xülasə");
       XLSX.utils.book_append_sheet(wb, ws1, "Tapşırıqlar");
-      XLSX.writeFile(wb, "hesabat-" + (reportRange === "month" ? "bu-ay" : "butun-zamanlar") + ".xlsx");
+      XLSX.writeFile(wb, "hesabat-" + reportStart + "_" + reportEnd + ".xlsx");
     }
 
     sections.push(e("div", { key: "reports", id: "print-area", style: { display: "flex", flexDirection: "column", gap: 20 } },
-      e("div", { className: "no-print", style: { display: "flex", gap: 8, flexWrap: "wrap" } },
-        e("button", { onClick: () => setReportRange("month"), style: { ...btnStyle(C.amber), background: reportRange === "month" ? C.amberDim : "transparent" } }, "Bu ay"),
-        e("button", { onClick: () => setReportRange("all"), style: { ...btnStyle(C.amber), background: reportRange === "all" ? C.amberDim : "transparent" } }, "Bütün zamanlar"),
-        e("span", { style: { flex: 1 } }),
-        e("button", { onClick: exportExcel, style: btnStyle(C.green) }, "📊 Excel-ə ixrac et"),
-        e("button", { onClick: () => window.print(), style: btnStyle(C.muted) }, "🖨 PDF (çap et / saxla)")
+      e("div", { className: "no-print", style: { display: "flex", flexDirection: "column", gap: 10 } },
+        e("div", { style: { display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" } },
+          e(Input, { label: "Başlanğıc tarix", type: "date", value: reportStart, onChange: ev => setReportStart(ev.target.value) }),
+          e(Input, { label: "Son tarix", type: "date", value: reportEnd, onChange: ev => setReportEnd(ev.target.value) }),
+          e("label", { style: { display: "flex", flexDirection: "column", gap: 6, fontFamily: FONT } },
+            e("span", { style: { fontSize: 12.5, color: C.muted, fontWeight: 600 } }, "Komanda üzvü"),
+            e("select", {
+              value: reportMemberFilter, onChange: ev => setReportMemberFilter(ev.target.value),
+              style: { background: C.surface, border: "1px solid " + C.border, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 14, fontFamily: FONT, outline: "none" }
+            },
+              e("option", { value: "all" }, "Hamısı"),
+              activeMembers(state.members).map(m => e("option", { key: m.id, value: m.id }, m.name))
+            )
+          )
+        ),
+        e("div", { style: { display: "flex", gap: 8, justifyContent: "flex-end" } },
+          e("button", { onClick: exportExcel, style: btnStyle(C.green) }, "📊 Excel-ə ixrac et"),
+          e("button", { onClick: () => window.print(), style: btnStyle(C.muted) }, "🖨 PDF (çap et / saxla)")
+        )
       ),
       e("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10 } },
         [
@@ -899,21 +907,6 @@ function App() {
               memberList.map(([name, d]) => BarRow(name, d.count, maxMemberCount, C.green,
                 d.count + " ədəd · " + formatDuration(d.minutes * 60000) + " ümumi"))
             )
-      ),
-      dayList.length > 0 && e("div", null,
-        e("div", { style: { fontFamily: FONT, fontSize: 13, color: C.text, fontWeight: 700, marginBottom: 10 } }, "Günlərə görə"),
-        e("div", { style: { display: "flex", flexDirection: "column", gap: 5 } },
-          dayList.map(([day, d]) => e("div", {
-            key: day, style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, fontSize: 12.5, fontFamily: FONT, background: C.surface2, border: "1px solid " + C.border, borderRadius: 7, padding: "6px 10px" }
-          },
-            e("span", { style: { color: C.text, fontWeight: 600 } }, new Date(day).toLocaleDateString("az-AZ", { day: "2-digit", month: "long", year: "numeric" })),
-            e("span", { style: { display: "flex", gap: 8 } },
-              d.done > 0 && e(Badge, { tone: "green" }, d.done + " həll"),
-              d.failed > 0 && e(Badge, { tone: "red" }, d.failed + " uğursuz"),
-              d.minutes > 0 && e(Badge, { tone: "neutral" }, formatDuration(d.minutes * 60000))
-            )
-          ))
-        )
       )
     ));
   }
@@ -1082,35 +1075,23 @@ function App() {
     ));
 
     if (!isReception && !isRequesterOnly) {
-      const now2 = new Date();
-      const isThisMonth2 = ts => { const d = new Date(ts); return d.getFullYear() === now2.getFullYear() && d.getMonth() === now2.getMonth(); };
+      const myRangeStartMs = new Date(reportStart + "T00:00:00").getTime();
+      const myRangeEndMs = new Date(reportEnd + "T23:59:59").getTime();
       const myTasksAll = state.tasks.filter(t => t.assignedTo === currentUser.id);
-      const myFiltered = reportRange === "month" ? myTasksAll.filter(t => isThisMonth2(t.createdAt)) : myTasksAll;
+      const myFiltered = myTasksAll.filter(t => t.createdAt >= myRangeStartMs && t.createdAt <= myRangeEndMs);
       const myDone = myFiltered.filter(t => t.status === STATUS.DONE);
       const myFailed = myFiltered.filter(t => t.status === STATUS.FAILED);
       const myOpen = myFiltered.length - myDone.length - myFailed.length;
       const myTotalMin = myDone.reduce((s, t) => s + (t.durationMinutes || 0), 0);
       const myAvgMin = myDone.length ? Math.round(myTotalMin / myDone.length) : 0;
-      const myRecent = [...myDone, ...myFailed].sort((a, b) => (b.resolvedAt || b.failedAt || 0) - (a.resolvedAt || a.failedAt || 0)).slice(0, 5);
-
-      const myDayMap = {};
-      [...myDone, ...myFailed].forEach(t => {
-        const ts = t.resolvedAt || t.failedAt || t.createdAt;
-        const key = new Date(ts).toISOString().slice(0, 10);
-        if (!myDayMap[key]) myDayMap[key] = { done: 0, failed: 0, minutes: 0 };
-        if (t.status === STATUS.DONE) { myDayMap[key].done++; myDayMap[key].minutes += (t.durationMinutes || 0); }
-        else myDayMap[key].failed++;
-      });
-      const myDayList = Object.entries(myDayMap).sort((a, b) => b[0].localeCompare(a[0]));
+      const myRecent = [...myDone, ...myFailed].sort((a, b) => (b.resolvedAt || b.failedAt || 0) - (a.resolvedAt || a.failedAt || 0)).slice(0, 8);
 
       sections.push(e("div", { key: "myreport", style: { display: "flex", flexDirection: "column", gap: 14 } },
         e("div", { style: { height: 1, background: C.border } }),
-        e("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 } },
-          e("div", { style: { fontFamily: FONT, fontSize: 13, color: C.text, fontWeight: 700 } }, "Mənim hesabatım"),
-          e("div", { style: { display: "flex", gap: 8 } },
-            e("button", { onClick: () => setReportRange("month"), style: { ...btnStyle(C.amber), background: reportRange === "month" ? C.amberDim : "transparent", fontSize: 11.5 } }, "Bu ay"),
-            e("button", { onClick: () => setReportRange("all"), style: { ...btnStyle(C.amber), background: reportRange === "all" ? C.amberDim : "transparent", fontSize: 11.5 } }, "Bütün zamanlar")
-          )
+        e("div", { style: { fontFamily: FONT, fontSize: 13, color: C.text, fontWeight: 700 } }, "Mənim hesabatım"),
+        e("div", { style: { display: "flex", gap: 10, flexWrap: "wrap" } },
+          e(Input, { label: "Başlanğıc tarix", type: "date", value: reportStart, onChange: ev => setReportStart(ev.target.value) }),
+          e(Input, { label: "Son tarix", type: "date", value: reportEnd, onChange: ev => setReportEnd(ev.target.value) })
         ),
         e("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 10 } },
           [
@@ -1126,26 +1107,11 @@ function App() {
           ))
         ),
         myRecent.length > 0 && e("div", null,
-          e("div", { style: { fontFamily: FONT, fontSize: 12.5, color: C.muted, fontWeight: 600, marginBottom: 8 } }, "Son nəticələndirdiklərim"),
+          e("div", { style: { fontFamily: FONT, fontSize: 12.5, color: C.muted, fontWeight: 600, marginBottom: 8 } }, "Bu dövrdə nəticələndirdiklərim"),
           e("div", { style: { display: "flex", flexDirection: "column", gap: 6 } },
             myRecent.map(t => e("div", { key: t.id, style: { display: "flex", justifyContent: "space-between", gap: 8, fontSize: 12.5, fontFamily: FONT, background: C.surface2, borderRadius: 7, padding: "7px 10px" } },
               e("span", { style: { color: C.text } }, t.title),
               e(Badge, { tone: t.status === STATUS.DONE ? "green" : "red" }, t.status)
-            ))
-          )
-        ),
-        myDayList.length > 0 && e("div", null,
-          e("div", { style: { fontFamily: FONT, fontSize: 12.5, color: C.muted, fontWeight: 600, marginBottom: 8 } }, "Günlərə görə"),
-          e("div", { style: { display: "flex", flexDirection: "column", gap: 5 } },
-            myDayList.map(([day, d]) => e("div", {
-              key: day, style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, fontSize: 12.5, fontFamily: FONT, background: C.surface2, borderRadius: 7, padding: "6px 10px" }
-            },
-              e("span", { style: { color: C.text, fontWeight: 600 } }, new Date(day).toLocaleDateString("az-AZ", { day: "2-digit", month: "long", year: "numeric" })),
-              e("span", { style: { display: "flex", gap: 8 } },
-                d.done > 0 && e(Badge, { tone: "green" }, d.done + " həll"),
-                d.failed > 0 && e(Badge, { tone: "red" }, d.failed + " uğursuz"),
-                d.minutes > 0 && e(Badge, { tone: "neutral" }, formatDuration(d.minutes * 60000))
-              )
             ))
           )
         )
