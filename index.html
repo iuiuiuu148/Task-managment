@@ -1055,6 +1055,52 @@ function App() {
       }, "🔔 Bildirişləri aktivləşdir"),
       pushDebug && e("div", { style: { color: C.muted, fontSize: 11.5, fontFamily: "monospace", wordBreak: "break-all", background: C.surface2, padding: 8, borderRadius: 6 } }, pushDebug)
     ));
+
+    if (!isReception && !isRequesterOnly) {
+      const now2 = new Date();
+      const isThisMonth2 = ts => { const d = new Date(ts); return d.getFullYear() === now2.getFullYear() && d.getMonth() === now2.getMonth(); };
+      const myTasksAll = state.tasks.filter(t => t.assignedTo === currentUser.id);
+      const myFiltered = reportRange === "month" ? myTasksAll.filter(t => isThisMonth2(t.createdAt)) : myTasksAll;
+      const myDone = myFiltered.filter(t => t.status === STATUS.DONE);
+      const myFailed = myFiltered.filter(t => t.status === STATUS.FAILED);
+      const myOpen = myFiltered.length - myDone.length - myFailed.length;
+      const myTotalMin = myDone.reduce((s, t) => s + (t.durationMinutes || 0), 0);
+      const myAvgMin = myDone.length ? Math.round(myTotalMin / myDone.length) : 0;
+      const myRecent = [...myDone, ...myFailed].sort((a, b) => (b.resolvedAt || b.failedAt || 0) - (a.resolvedAt || a.failedAt || 0)).slice(0, 5);
+
+      sections.push(e("div", { key: "myreport", style: { display: "flex", flexDirection: "column", gap: 14 } },
+        e("div", { style: { height: 1, background: C.border } }),
+        e("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 } },
+          e("div", { style: { fontFamily: FONT, fontSize: 13, color: C.text, fontWeight: 700 } }, "Mənim hesabatım"),
+          e("div", { style: { display: "flex", gap: 8 } },
+            e("button", { onClick: () => setReportRange("month"), style: { ...btnStyle(C.amber), background: reportRange === "month" ? C.amberDim : "transparent", fontSize: 11.5 } }, "Bu ay"),
+            e("button", { onClick: () => setReportRange("all"), style: { ...btnStyle(C.amber), background: reportRange === "all" ? C.amberDim : "transparent", fontSize: 11.5 } }, "Bütün zamanlar")
+          )
+        ),
+        e("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 10 } },
+          [
+            ["Mənə düşən", myFiltered.length, C.text],
+            ["Həll etdiyim", myDone.length, C.green],
+            ["Həll edə bilmədiyim", myFailed.length, C.red],
+            ["Davam edən", myOpen, C.amber],
+            ["Orta vaxtım", formatDuration(myAvgMin * 60000), C.muted],
+            ["Ümumi sərf etdiyim vaxt", formatDuration(myTotalMin * 60000), C.muted]
+          ].map(([label, val, color]) => e("div", { key: label, style: { background: C.surface2, border: "1px solid " + C.border, borderRadius: 10, padding: "10px 12px" } },
+            e("div", { style: { fontFamily: FONT, fontSize: 11, color: C.muted } }, label),
+            e("div", { style: { fontFamily: DISPLAY_FONT, fontWeight: 800, fontSize: 18, color: color, marginTop: 3 } }, val)
+          ))
+        ),
+        myRecent.length > 0 && e("div", null,
+          e("div", { style: { fontFamily: FONT, fontSize: 12.5, color: C.muted, fontWeight: 600, marginBottom: 8 } }, "Son nəticələndirdiklərim"),
+          e("div", { style: { display: "flex", flexDirection: "column", gap: 6 } },
+            myRecent.map(t => e("div", { key: t.id, style: { display: "flex", justifyContent: "space-between", gap: 8, fontSize: 12.5, fontFamily: FONT, background: C.surface2, borderRadius: 7, padding: "7px 10px" } },
+              e("span", { style: { color: C.text } }, t.title),
+              e(Badge, { tone: t.status === STATUS.DONE ? "green" : "red" }, t.status)
+            ))
+          )
+        )
+      ));
+    }
   }
 
   return e("div", { style: wrapStyle },
