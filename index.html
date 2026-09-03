@@ -842,6 +842,20 @@ function App() {
         ]);
       });
       const ws1 = XLSX.utils.aoa_to_sheet(rows);
+
+      const teamRows = [["Ad", "Rol", "Tapşırıq yarada bilər", "Ona düşən", "Həll etdiyi", "Həll edə bilmədiyi", "Davam edən", "Ümumi vaxt (dəq)", "Orta vaxt (dəq)"]];
+      state.members.filter(m => m.role !== "reception").forEach(m => {
+        const assigned = filteredTasks.filter(t => t.assignedTo === m.id);
+        const done = assigned.filter(t => t.status === STATUS.DONE);
+        const failed = assigned.filter(t => t.status === STATUS.FAILED);
+        const open = assigned.length - done.length - failed.length;
+        const totalMin = done.reduce((s, t) => s + (t.durationMinutes || 0), 0);
+        const avgMin = done.length ? Math.round(totalMin / done.length) : 0;
+        const roleLabel = m.role === "requester" ? "Yalnız yaradan" : (m.canCreate ? "Yaradır + qəbul edir" : "Yalnız qəbul edir");
+        teamRows.push([m.name, roleLabel, m.canCreate ? "Bəli" : "Xeyr", assigned.length, done.length, failed.length, open, totalMin, avgMin]);
+      });
+      const wsTeam = XLSX.utils.aoa_to_sheet(teamRows);
+
       const summaryRows = [
         ["Dövr", reportStart + " — " + reportEnd],
         ["Üzv filtri", reportMemberFilter === "all" ? "Hamısı" : (state.members.find(m => m.id === reportMemberFilter) || {}).name || ""],
@@ -853,6 +867,7 @@ function App() {
       const ws2 = XLSX.utils.aoa_to_sheet(summaryRows);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws2, "Xülasə");
+      XLSX.utils.book_append_sheet(wb, wsTeam, "Komanda");
       XLSX.utils.book_append_sheet(wb, ws1, "Tapşırıqlar");
       XLSX.writeFile(wb, "hesabat-" + reportStart + "_" + reportEnd + ".xlsx");
     }
