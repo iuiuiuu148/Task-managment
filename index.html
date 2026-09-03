@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-<title>IT Dəstək</title>
+<title>Tapşırıq Növbəsi</title>
 <link rel="manifest" href="manifest.json" />
 <meta name="theme-color" content="#12161D" />
 <link rel="icon" href="icon-192.png" />
@@ -381,7 +381,7 @@ function App() {
       return e("div", { style: { ...wrapStyle, alignItems: "center", justifyContent: "center" } },
         e("div", { style: { width: 340, display: "flex", flexDirection: "column", gap: 18 } },
           e("div", null,
-            e("div", { style: { fontFamily: DISPLAY_FONT, fontWeight: 800, fontSize: 22, color: C.text } }, "İT Dəstək"),
+            e("div", { style: { fontFamily: DISPLAY_FONT, fontWeight: 800, fontSize: 22, color: C.text } }, "Tapşırıq Növbəsi"),
             e("div", { style: { fontFamily: FONT, fontSize: 13.5, color: C.muted, marginTop: 4 } },
               "İlk addım: admin hesabı yaradın. Komanda üzvlərini sonra əlavə edə bilərsiniz.")
           ),
@@ -423,7 +423,7 @@ function App() {
     return e("div", { style: { ...wrapStyle, alignItems: "center", justifyContent: "center" } },
       e("div", { style: { width: 340, display: "flex", flexDirection: "column", gap: 18 } },
         e("div", null,
-          e("div", { style: { fontFamily: DISPLAY_FONT, fontWeight: 800, fontSize: 22, color: C.text } }, "İT Dəstək"),
+          e("div", { style: { fontFamily: DISPLAY_FONT, fontWeight: 800, fontSize: 22, color: C.text } }, "Tapşırıq Növbəsi"),
           e("div", { style: { fontFamily: FONT, fontSize: 13.5, color: C.muted, marginTop: 4 } }, "Adınızı və PIN-inizi daxil edin.")
         ),
         e(Input, { label: "Ad", value: loginName, onChange: ev => { setLoginName(ev.target.value); setLoginError(""); }, placeholder: "Adınız", onKeyDown: onEnter(attemptLogin) }),
@@ -630,15 +630,33 @@ function App() {
     setChatInput("");
   }
 
-  function toggleCanCreate(id) {
-    persist(prev => ({ ...prev, members: prev.members.map(m => m.id === id ? { ...m, canCreate: !m.canCreate } : m) }));
+  function setMemberMode(id, mode) {
+    // mode: 'receiveOnly' | 'both' | 'createOnly'
+    persist(prev => ({
+      ...prev,
+      members: prev.members.map(m => {
+        if (m.id !== id) return m;
+        if (mode === "receiveOnly") return { ...m, role: "member", canCreate: false };
+        if (mode === "both") return { ...m, role: "member", canCreate: true };
+        if (mode === "createOnly") return { ...m, role: "requester", canCreate: true };
+        return m;
+      })
+    }));
   }
 
-  const tabs = (isReception || currentUser.canCreate)
+  const isRequesterOnly = currentUser.role === "requester";
+  const canCreateTasks = isReception || currentUser.canCreate || isRequesterOnly;
+
+  const tabs = isReception
     ? [{ id: "new", label: "Yeni tapşırıq" }, { id: "board", label: "Növbə lövhəsi" },
        { id: "mine", label: "Mənim tapşırıqlarım" },
-       ...(isReception ? [{ id: "team", label: "Komanda" }, { id: "settings", label: "Ayarlar" }] : []),
+       { id: "team", label: "Komanda" }, { id: "settings", label: "Ayarlar" },
        { id: "chat", label: "Söhbət" }, { id: "profile", label: "Profilim" }]
+    : isRequesterOnly
+    ? [{ id: "new", label: "Yeni tapşırıq" }, { id: "profile", label: "Profilim" }]
+    : currentUser.canCreate
+    ? [{ id: "new", label: "Yeni tapşırıq" }, { id: "board", label: "Növbə lövhəsi" },
+       { id: "mine", label: "Mənim tapşırıqlarım" }, { id: "chat", label: "Söhbət" }, { id: "profile", label: "Profilim" }]
     : [{ id: "mine", label: "Mənim tapşırıqlarım" }, { id: "board", label: "Ümumi lövhə" },
        { id: "chat", label: "Söhbət" }, { id: "profile", label: "Profilim" }];
 
@@ -647,7 +665,7 @@ function App() {
   // Header
   sections.push(e("div", { key: "header", style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
     e("div", null,
-      e("div", { style: { fontFamily: DISPLAY_FONT, fontWeight: 800, fontSize: 20, color: C.text } }, "İT Dəstək"),
+      e("div", { style: { fontFamily: DISPLAY_FONT, fontWeight: 800, fontSize: 20, color: C.text } }, "Tapşırıq Növbəsi"),
       e("div", { style: { fontFamily: FONT, fontSize: 12.5, color: C.muted } }, isReception ? "Admin paneli" : "Komanda üzvü")
     ),
     e("div", { style: { display: "flex", alignItems: "center", gap: 10 } },
@@ -683,7 +701,7 @@ function App() {
     ))
   ));
 
-  if ((isReception || currentUser.canCreate) && tab === "new") {
+  if (canCreateTasks && tab === "new") {
     sections.push(e("div", { key: "new", style: { display: "flex", flexDirection: "column", gap: 14 } },
       e(Input, { label: "Başlıq", value: newTitle, onChange: ev => setNewTitle(ev.target.value), placeholder: "Məs: Qonaq otağına printer lazımdır" }),
       e("label", { style: { display: "flex", flexDirection: "column", gap: 6, fontFamily: FONT } },
@@ -733,7 +751,7 @@ function App() {
     ));
   }
 
-  if (!isReception && tab === "mine") {
+  if (!isReception && !isRequesterOnly && tab === "mine") {
     sections.push(e("div", { key: "mine", style: { display: "flex", flexDirection: "column", gap: 12 } },
       myTasks.length === 0 && e("div", { style: { color: C.faint, fontSize: 13.5, fontFamily: FONT } }, "Sizə hələ tapşırıq düşməyib."),
       myTasks.map(t => e(TaskCard, { key: t.id, task: t, members: state.members, currentUser,
@@ -744,7 +762,7 @@ function App() {
   if (isReception && tab === "team") {
     sections.push(e("div", { key: "team", style: { display: "flex", flexDirection: "column", gap: 18 } },
       e("div", { style: { display: "flex", flexDirection: "column", gap: 8 } },
-        activeMembers(state.members).map((m, i) => editingMemberId === m.id
+        state.members.filter(m => m.role !== "reception").map((m, i) => editingMemberId === m.id
           ? e("div", { key: m.id, style: { display: "flex", flexDirection: "column", gap: 8, background: C.surface2, border: "1px solid " + C.amber, borderRadius: 9, padding: "10px 12px" } },
               e("div", { style: { display: "flex", gap: 8 } },
                 e("div", { style: { flex: 2 } }, e(Input, { value: editMemberName, onChange: ev => setEditMemberName(ev.target.value), placeholder: "Ad" })),
@@ -756,18 +774,26 @@ function App() {
                 e("button", { onClick: () => setEditingMemberId(null), style: btnStyle(C.muted) }, "✕ İmtina")
               )
             )
-          : e("div", { key: m.id, style: { display: "flex", alignItems: "center", gap: 10, background: C.surface2, border: "1px solid " + C.border, borderRadius: 9, padding: "9px 12px", flexWrap: "wrap" } },
-              e("span", { style: { color: C.faint, fontFamily: FONT, fontSize: 12, width: 16 } }, i + 1),
-              e(Avatar, { name: m.name, size: 26 }),
-              e("span", { style: { flex: 1, fontFamily: FONT, fontSize: 13.5, color: C.text, fontWeight: 600 } }, m.name),
-              e("button", {
-                onClick: () => toggleCanCreate(m.id),
-                style: { ...btnStyle(m.canCreate ? C.green : C.faint), fontSize: 11 }
-              }, m.canCreate ? "✓ Yaza bilər" : "Yalnız qəbul edir"),
-              e("button", { onClick: () => startEditMember(m), style: iconBtn }, "✎"),
-              e("button", { onClick: () => moveMember(m.id, -1), style: iconBtn }, "▲"),
-              e("button", { onClick: () => moveMember(m.id, 1), style: iconBtn }, "▼"),
-              e("button", { onClick: () => removeMember(m.id), style: { ...iconBtn, color: C.red } }, "🗑")
+          : e("div", { key: m.id, style: { display: "flex", flexDirection: "column", gap: 8, background: C.surface2, border: "1px solid " + C.border, borderRadius: 9, padding: "9px 12px" } },
+              e("div", { style: { display: "flex", alignItems: "center", gap: 10 } },
+                e("span", { style: { color: C.faint, fontFamily: FONT, fontSize: 12, width: 16 } }, i + 1),
+                e(Avatar, { name: m.name, size: 26 }),
+                e("span", { style: { flex: 1, fontFamily: FONT, fontSize: 13.5, color: C.text, fontWeight: 600 } }, m.name),
+                e("button", { onClick: () => startEditMember(m), style: iconBtn }, "✎"),
+                m.role === "member" && e("button", { onClick: () => moveMember(m.id, -1), style: iconBtn }, "▲"),
+                m.role === "member" && e("button", { onClick: () => moveMember(m.id, 1), style: iconBtn }, "▼"),
+                e("button", { onClick: () => removeMember(m.id), style: { ...iconBtn, color: C.red } }, "🗑")
+              ),
+              e("div", { style: { display: "flex", gap: 6, flexWrap: "wrap" } },
+                [
+                  { mode: "receiveOnly", label: "Yalnız qəbul edir", active: m.role === "member" && !m.canCreate },
+                  { mode: "both", label: "Yaradır + qəbul edir", active: m.role === "member" && !!m.canCreate },
+                  { mode: "createOnly", label: "Yalnız yaradır (dəstək tələbi)", active: m.role === "requester" }
+                ].map(opt => e("button", {
+                  key: opt.mode, onClick: () => setMemberMode(m.id, opt.mode),
+                  style: { ...btnStyle(opt.active ? C.green : C.faint), fontSize: 11, background: opt.active ? C.greenDim : "transparent" }
+                }, opt.label))
+              )
             )
         )
       ),
