@@ -3,14 +3,14 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-<title>Tapşırıq Növbəsi</title>
+<title>IT DƏSTƏK</title>
 <link rel="manifest" href="manifest.json" />
 <meta name="theme-color" content="#12161D" />
 <link rel="icon" href="icon-192.png" />
 <link rel="apple-touch-icon" href="icon-192.png" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<meta name="apple-mobile-web-app-title" content="Tapşırıqlar" />
+<meta name="apple-mobile-web-app-title" content="IT Dəstək" />
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -72,17 +72,21 @@ function activeMembers(members) { return members.filter(m => m.role === "member"
 function openTaskCount(tasks, memberId) {
   return tasks.filter(t => t.assignedTo === memberId && t.status !== STATUS.DONE && t.status !== STATUS.FAILED).length;
 }
-function pickNext(members, tasks, rrIndex, mode) {
+function pickNext(members, tasks, rrIndex, mode, excludeId) {
   const pool = activeMembers(members);
   if (pool.length === 0) return null;
   const startIdx = rrIndex % pool.length;
-  if (mode === "skip") {
-    for (let i = 0; i < pool.length; i++) {
-      const idx = (startIdx + i) % pool.length;
-      if (openTaskCount(tasks, pool[idx].id) === 0) return { member: pool[idx], idx };
+  for (let i = 0; i < pool.length; i++) {
+    const idx = (startIdx + i) % pool.length;
+    const candidate = pool[idx];
+    if (excludeId && candidate.id === excludeId) continue;
+    if (mode === "skip") {
+      if (openTaskCount(tasks, candidate.id) === 0) return { member: candidate, idx };
+      continue;
     }
+    return { member: candidate, idx };
   }
-  return { member: pool[startIdx], idx: startIdx };
+  return null;
 }
 
 // ---------- Small UI helpers ----------
@@ -394,7 +398,7 @@ function App() {
       return e("div", { style: { ...wrapStyle, alignItems: "center", justifyContent: "center" } },
         e("div", { style: { width: 340, display: "flex", flexDirection: "column", gap: 18 } },
           e("div", null,
-            e("div", { style: { fontFamily: DISPLAY_FONT, fontWeight: 800, fontSize: 22, color: C.text } }, "Tapşırıq Növbəsi"),
+            e("div", { style: { fontFamily: DISPLAY_FONT, fontWeight: 800, fontSize: 22, color: C.text } }, "IT DƏSTƏK"),
             e("div", { style: { fontFamily: FONT, fontSize: 13.5, color: C.muted, marginTop: 4 } },
               "İlk addım: admin hesabı yaradın. Komanda üzvlərini sonra əlavə edə bilərsiniz.")
           ),
@@ -436,7 +440,7 @@ function App() {
     return e("div", { style: { ...wrapStyle, alignItems: "center", justifyContent: "center" } },
       e("div", { style: { width: 340, display: "flex", flexDirection: "column", gap: 18 } },
         e("div", null,
-          e("div", { style: { fontFamily: DISPLAY_FONT, fontWeight: 800, fontSize: 22, color: C.text } }, "Tapşırıq Növbəsi"),
+          e("div", { style: { fontFamily: DISPLAY_FONT, fontWeight: 800, fontSize: 22, color: C.text } }, "IT DƏSTƏK"),
           e("div", { style: { fontFamily: FONT, fontSize: 13.5, color: C.muted, marginTop: 4 } }, "Adınızı və PIN-inizi daxil edin.")
         ),
         e(Input, { label: "Ad", value: loginName, onChange: ev => { setLoginName(ev.target.value); setLoginError(""); }, placeholder: "Adınız", onKeyDown: onEnter(attemptLogin) }),
@@ -453,7 +457,7 @@ function App() {
   const isReception = currentUser.role === "reception";
   const myTasks = state.tasks.filter(t => t.assignedTo === currentUser.id).sort((a, b) => b.createdAt - a.createdAt);
   const allTasksSorted = [...state.tasks].sort((a, b) => b.createdAt - a.createdAt);
-  const suggestion = pickNext(state.members, state.tasks, state.rrIndex, "strict");
+  const suggestion = pickNext(state.members, state.tasks, state.rrIndex, "strict", currentUser.id);
 
   function startTask(taskId) {
     persist(prev => ({
@@ -554,7 +558,7 @@ function App() {
             rrIndex = (idx + 1) % pool.length;
           }
         } else {
-          const res = pickNext(prev.members, prev.tasks, prev.rrIndex, assignMode);
+          const res = pickNext(prev.members, prev.tasks, prev.rrIndex, assignMode, currentUser.id);
           if (res) { assignedTo = res.member.id; rrIndex = (res.idx + 1) % pool.length; }
         }
       }
@@ -689,7 +693,7 @@ function App() {
   // Header
   sections.push(e("div", { key: "header", style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
     e("div", null,
-      e("div", { style: { fontFamily: DISPLAY_FONT, fontWeight: 800, fontSize: 20, color: C.text } }, "Tapşırıq Növbəsi"),
+      e("div", { style: { fontFamily: DISPLAY_FONT, fontWeight: 800, fontSize: 20, color: C.text } }, "IT DƏSTƏK"),
       e("div", { style: { fontFamily: FONT, fontSize: 12.5, color: C.muted } }, isReception ? "Admin paneli" : "Komanda üzvü")
     ),
     e("div", { style: { display: "flex", alignItems: "center", gap: 10 } },
@@ -708,6 +712,7 @@ function App() {
   // Unread chat count
   const myReadReceipts = (state.members.find(m => m.id === currentUser.id) || {}).readReceipts || {};
   const unreadTotal = (state.chat || []).filter(m => m.recipientId === currentUser.id && m.at > (myReadReceipts[m.senderId] || 0)).length;
+  const myPendingCount = state.tasks.filter(t => t.assignedTo === currentUser.id && t.status === STATUS.NEW).length;
 
   // Tabs
   sections.push(e("div", { key: "tabs", style: { display: "flex", gap: 6, borderBottom: "1px solid " + C.border, flexWrap: "wrap" } },
@@ -721,7 +726,11 @@ function App() {
       t.id === "chat" && unreadTotal > 0 && e("span", {
         style: { background: C.red, color: "#fff", fontSize: 10.5, fontWeight: 700, borderRadius: 999,
           minWidth: 16, height: 16, display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "0 4px" }
-      }, unreadTotal)
+      }, unreadTotal),
+      t.id === "mine" && myPendingCount > 0 && e("span", {
+        style: { background: C.red, color: "#fff", fontSize: 10.5, fontWeight: 700, borderRadius: 999,
+          minWidth: 16, height: 16, display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "0 4px" }
+      }, myPendingCount)
     ))
   ));
 
@@ -738,13 +747,14 @@ function App() {
         e("div", { style: { flex: 1 } }, e(Input, { label: "Hansı əməkdaşa dəstək lazımdır", value: newRequester, onChange: ev => setNewRequester(ev.target.value), placeholder: "Məs: Elvin" })),
         e("div", { style: { flex: 1 } }, e(Input, { label: "Otaq nömrəsi", value: newRoom, onChange: ev => setNewRoom(ev.target.value), placeholder: "Məs: 214" }))
       ),
-      (state.departments || []).length > 0 && e("div", { style: { display: "flex", flexDirection: "column", gap: 6 } },
-        e("span", { style: { fontSize: 12.5, color: C.muted, fontWeight: 600, fontFamily: FONT } }, "Şöbə (istəyə bağlı)"),
-        e("div", { style: { display: "flex", flexWrap: "wrap", gap: 8 } },
-          state.departments.map(d => e("button", {
-            key: d, onClick: () => setNewDepartment(newDepartment === d ? "" : d),
-            style: { ...btnStyle(newDepartment === d ? C.amber : C.muted), background: newDepartment === d ? C.amberDim : "transparent" }
-          }, d))
+      (state.departments || []).length > 0 && e("label", { style: { display: "flex", flexDirection: "column", gap: 6, fontFamily: FONT } },
+        e("span", { style: { fontSize: 12.5, color: C.muted, fontWeight: 600 } }, "Şöbə (istəyə bağlı)"),
+        e("select", {
+          value: newDepartment, onChange: ev => setNewDepartment(ev.target.value),
+          style: { background: C.surface, border: "1px solid " + C.border, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 14, fontFamily: FONT, outline: "none" }
+        },
+          e("option", { value: "" }, "— Seçilməyib —"),
+          state.departments.map(d => e("option", { key: d, value: d }, d))
         )
       ),
       e("div", { style: { display: "flex", gap: 8 } },
