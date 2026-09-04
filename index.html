@@ -609,6 +609,37 @@ function App() {
     persist(prev => ({ ...prev, tasks: prev.tasks.filter(t => t.id !== taskId) }));
   }
 
+  function exportBackup() {
+    const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "yedek-" + new Date().toISOString().slice(0, 10) + ".json";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function importBackup(file) {
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        if (!data || !Array.isArray(data.members) || !Array.isArray(data.tasks)) {
+          alert("Fayl düzgün formatda deyil (members/tasks tapılmadı).");
+          return;
+        }
+        if (!window.confirm("Bu, hazırkı bütün datanı (üzvlər, tapşırıqlar, söhbət) seçdiyiniz fayldakı ilə əvəz edəcək. Davam edilsin?")) return;
+        persist(data);
+        alert("Bərpa edildi.");
+      } catch (e) {
+        alert("Fayl oxunmadı: " + e.message);
+      }
+    };
+    reader.readAsText(file);
+  }
+
   function resetAllTasks() {
     if (!window.confirm("Bütün tapşırıqlar həmişəlik silinsin? Bu geri qaytarıla bilməz.")) return;
     persist(prev => ({ ...prev, tasks: [] }));
@@ -1154,6 +1185,20 @@ function App() {
             style: { flex: 1, background: C.surface, border: "1px solid " + C.border, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 14, fontFamily: FONT, outline: "none" }
           }),
           e("button", { onClick: addDepartment, style: btnStyle(C.amber) }, "+ Əlavə et")
+        )
+      ),
+      e("div", { style: { height: 1, background: C.border, margin: "10px 0" } }),
+      e("div", { style: { fontFamily: FONT, fontSize: 13, color: C.text, fontWeight: 600 } }, "💾 Ehtiyat nüsxə"),
+      e("div", { style: { color: C.faint, fontSize: 12, fontFamily: FONT } },
+        "Bütün datanı (üzvlər, tapşırıqlar, söhbət, şöbələr) öz kompüterinizə bir fayl kimi yükləyin. Vaxtaşırı (məs. həftədə bir) bunu edin ki, gözlənilməz itki halında geri bərpa edə biləsiniz."),
+      e("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" } },
+        e("button", { onClick: exportBackup, style: btnStyle(C.green) }, "⬇ Ehtiyat nüsxəni yüklə"),
+        e("label", { style: { ...btnStyle(C.amber), cursor: "pointer" } },
+          "⬆ Fayldan bərpa et",
+          e("input", {
+            type: "file", accept: "application/json", style: { display: "none" },
+            onChange: ev => { if (ev.target.files[0]) importBackup(ev.target.files[0]); ev.target.value = ""; }
+          })
         )
       ),
       e("div", { style: { height: 1, background: C.border, margin: "10px 0" } }),
