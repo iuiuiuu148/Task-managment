@@ -317,6 +317,9 @@ function App() {
   const [newRoom, setNewRoom] = useState("");
   const [newDepartment, setNewDepartment] = useState("");
   const [deptInput, setDeptInput] = useState("");
+  const [deptPanelOpen, setDeptPanelOpen] = useState(false);
+  const [editingDeptName, setEditingDeptName] = useState(null);
+  const [editDeptValue, setEditDeptValue] = useState("");
   const [reportStart, setReportStart] = useState(() => { const d = new Date(); d.setDate(1); return d.toISOString().slice(0, 10); });
   const [reportEnd, setReportEnd] = useState(() => new Date().toISOString().slice(0, 10));
   const [reportMemberFilter, setReportMemberFilter] = useState("all");
@@ -550,6 +553,17 @@ function App() {
     if (!name || (state.departments || []).includes(name)) return;
     persist(prev => ({ ...prev, departments: [...(prev.departments || []), name] }));
     setDeptInput("");
+  }
+
+  function renameDepartment(oldName, newName) {
+    const trimmed = newName.trim();
+    if (!trimmed || trimmed === oldName) { setEditingDeptName(null); return; }
+    persist(prev => ({
+      ...prev,
+      departments: (prev.departments || []).map(d => d === oldName ? trimmed : d),
+      tasks: prev.tasks.map(t => t.department === oldName ? { ...t, department: trimmed } : t)
+    }));
+    setEditingDeptName(null);
   }
 
   function removeDepartment(name) {
@@ -1100,21 +1114,47 @@ function App() {
       e("div", { style: { color: C.faint, fontSize: 12.5, fontFamily: FONT, marginTop: 4 } },
         "Bu, yalnız \"Yeni tapşırıq\" formasının açılış dəyəridir — hər tapşırıqda üsulu dəyişə bilərsiniz."),
       e("div", { style: { height: 1, background: C.border, margin: "10px 0" } }),
-      e("div", { style: { fontFamily: FONT, fontSize: 13, color: C.text, fontWeight: 600 } }, "Şöbələr"),
-      e("div", { style: { color: C.faint, fontSize: 12, fontFamily: FONT } }, "Tapşırıq yaradarkən seçilə bilən şöbə siyahısı — hesabatlarda qruplaşdırmaq üçün istifadə olunur."),
-      e("div", { style: { display: "flex", flexWrap: "wrap", gap: 8 } },
-        (state.departments || []).length === 0 && e("div", { style: { color: C.faint, fontSize: 12.5, fontFamily: FONT } }, "Hələ şöbə əlavə edilməyib."),
-        (state.departments || []).map(d => e("span", {
-          key: d, style: { display: "flex", alignItems: "center", gap: 6, background: C.surface2, border: "1px solid " + C.border, borderRadius: 7, padding: "5px 6px 5px 10px", fontSize: 12.5, fontFamily: FONT, color: C.text }
-        }, d, e("button", { onClick: () => removeDepartment(d), style: { ...iconBtn, fontSize: 12, color: C.red } }, "✕")))
+      e("button", {
+        onClick: () => setDeptPanelOpen(v => !v),
+        style: { display: "flex", justifyContent: "space-between", alignItems: "center", background: "transparent", border: "none", padding: 0, cursor: "pointer", width: "100%" }
+      },
+        e("div", { style: { fontFamily: FONT, fontSize: 13, color: C.text, fontWeight: 600 } }, "Şöbələr (" + (state.departments || []).length + ")"),
+        e("span", { style: { color: C.muted, fontSize: 13 } }, deptPanelOpen ? "▲" : "▼")
       ),
-      e("div", { style: { display: "flex", gap: 8 } },
-        e("input", {
-          value: deptInput, onChange: ev => setDeptInput(ev.target.value), placeholder: "Yeni şöbə adı (məs. Mühasibatlıq)",
-          onKeyDown: onEnter(addDepartment),
-          style: { flex: 1, background: C.surface, border: "1px solid " + C.border, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 14, fontFamily: FONT, outline: "none" }
-        }),
-        e("button", { onClick: addDepartment, style: btnStyle(C.amber) }, "+ Əlavə et")
+      !deptPanelOpen && e("div", { style: { color: C.faint, fontSize: 12, fontFamily: FONT } }, "Siyahıya baxmaq və ya əlavə etmək üçün açın."),
+      deptPanelOpen && e("div", { style: { display: "flex", flexDirection: "column", gap: 10 } },
+        e("div", { style: { color: C.faint, fontSize: 12, fontFamily: FONT } }, "Tapşırıq yaradarkən seçilə bilən şöbə siyahısı — hesabatlarda qruplaşdırmaq üçün istifadə olunur."),
+        e("div", { style: { display: "flex", flexDirection: "column", gap: 6, maxHeight: 260, overflowY: "auto" } },
+          (state.departments || []).length === 0 && e("div", { style: { color: C.faint, fontSize: 12.5, fontFamily: FONT } }, "Hələ şöbə əlavə edilməyib."),
+          (state.departments || []).map(d => editingDeptName === d
+            ? e("div", { key: d, style: { display: "flex", gap: 6, alignItems: "center" } },
+                e("input", {
+                  value: editDeptValue, onChange: ev => setEditDeptValue(ev.target.value),
+                  onKeyDown: onEnter(() => renameDepartment(d, editDeptValue)),
+                  style: { flex: 1, background: C.surface, border: "1px solid " + C.amber, borderRadius: 7, padding: "6px 10px", color: C.text, fontSize: 12.5, fontFamily: FONT, outline: "none" }
+                }),
+                e("button", { onClick: () => renameDepartment(d, editDeptValue), style: { ...btnStyle(C.green), fontSize: 11 } }, "✓"),
+                e("button", { onClick: () => setEditingDeptName(null), style: { ...btnStyle(C.muted), fontSize: 11 } }, "✕")
+              )
+            : e("div", {
+                key: d, style: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, background: C.surface2, border: "1px solid " + C.border, borderRadius: 7, padding: "6px 6px 6px 12px", fontSize: 12.5, fontFamily: FONT, color: C.text }
+              },
+                e("span", null, d),
+                e("div", { style: { display: "flex", gap: 2 } },
+                  e("button", { onClick: () => { setEditingDeptName(d); setEditDeptValue(d); }, style: { ...iconBtn, fontSize: 13 } }, "✎"),
+                  e("button", { onClick: () => removeDepartment(d), style: { ...iconBtn, fontSize: 13, color: C.red } }, "✕")
+                )
+              )
+          )
+        ),
+        e("div", { style: { display: "flex", gap: 8 } },
+          e("input", {
+            value: deptInput, onChange: ev => setDeptInput(ev.target.value), placeholder: "Yeni şöbə adı (məs. Mühasibatlıq)",
+            onKeyDown: onEnter(addDepartment),
+            style: { flex: 1, background: C.surface, border: "1px solid " + C.border, borderRadius: 8, padding: "9px 12px", color: C.text, fontSize: 14, fontFamily: FONT, outline: "none" }
+          }),
+          e("button", { onClick: addDepartment, style: btnStyle(C.amber) }, "+ Əlavə et")
+        )
       ),
       e("div", { style: { height: 1, background: C.border, margin: "10px 0" } }),
       e("div", { style: { fontFamily: FONT, fontSize: 13, color: C.red, fontWeight: 600 } }, "Test datasının təmizlənməsi"),
