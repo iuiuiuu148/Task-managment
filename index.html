@@ -73,7 +73,7 @@ function openTaskCount(tasks, memberId) {
   return tasks.filter(t => t.assignedTo === memberId && t.status !== STATUS.DONE && t.status !== STATUS.FAILED).length;
 }
 function pickNext(members, tasks, rrIndex, mode, excludeId) {
-  const pool = activeMembers(members);
+  const pool = activeMembers(members).filter(m => !m.frozen);
   if (pool.length === 0) return null;
   const startIdx = rrIndex % pool.length;
   for (let i = 0; i < pool.length; i++) {
@@ -165,7 +165,9 @@ function formatDuration(ms) {
   return h + " saat " + (m ? m + " dəq" : "");
 }
 
-function TaskCard({ task, members, currentUser, onStart, onPause, onResume, onResolve, onFail, onComment, onDelete, showAssignee }) {
+function TaskCard({ task, members, currentUser, onStart, onPause, onResume, onResolve, onFail, onComment, onDelete, showAssignee,
+  onEditDuration, editingDuration, durationInput, setDurationInput, onSaveDuration, onCancelDuration,
+  onTakeOver, onStartForward, forwardingOpen, onForwardTo, forwardCandidates }) {
   const [commentText, setCommentText] = useState("");
   const [showFailBox, setShowFailBox] = useState(false);
   const [failReasonText, setFailReasonText] = useState("");
@@ -197,8 +199,18 @@ function TaskCard({ task, members, currentUser, onStart, onPause, onResume, onRe
     e("div", { key: "times", style: { display: "flex", flexDirection: "column", gap: 2 } },
       task.createdBy && e("div", { style: { fontSize: 11.5, color: C.faint, fontFamily: FONT } },
         "Yaradıb: " + task.createdBy + (task.createdAt ? " · " + new Date(task.createdAt).toLocaleString("az-AZ") : "")),
-      task.status === STATUS.DONE && task.resolvedBy && e("div", { style: { fontSize: 11.5, color: C.green, fontFamily: FONT } },
-        "Həll edib: " + task.resolvedBy + (typeof task.durationMinutes === "number" ? " · " + formatDuration(task.durationMinutes * 60000) + " çəkib" : "")),
+      task.status === STATUS.DONE && task.resolvedBy && e("div", { style: { display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: C.green, fontFamily: FONT } },
+        "Həll edib: " + task.resolvedBy + (typeof task.durationMinutes === "number" ? " · " + formatDuration(task.durationMinutes * 60000) + " çəkib" : ""),
+        onEditDuration && !editingDuration && e("button", { onClick: () => onEditDuration(task.id, task.durationMinutes), style: { ...iconBtn, fontSize: 11, color: C.faint } }, "✎")),
+      editingDuration && e("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
+        e("input", {
+          type: "number", min: "0", value: durationInput, onChange: ev => setDurationInput(ev.target.value), placeholder: "dəqiqə",
+          style: { width: 80, background: C.surface, border: "1px solid " + C.border, borderRadius: 7, padding: "5px 8px", color: C.text, fontSize: 12.5, fontFamily: FONT, outline: "none" }
+        }),
+        e("span", { style: { fontSize: 11.5, color: C.muted, fontFamily: FONT } }, "dəqiqə"),
+        e("button", { onClick: onSaveDuration, style: { ...btnStyle(C.green), fontSize: 11 } }, "✓"),
+        e("button", { onClick: onCancelDuration, style: { ...btnStyle(C.muted), fontSize: 11 } }, "✕")
+      ),
       isFailed && e("div", { style: { fontSize: 11.5, color: C.red, fontFamily: FONT } },
         "Həll edilmədi (" + (task.failedBy || "") + "): " + (task.failReason || "səbəb qeyd edilməyib"))
     ),
@@ -213,13 +225,32 @@ function TaskCard({ task, members, currentUser, onStart, onPause, onResume, onRe
     )
   ];
 
-  if (!isTerminal && (onStart || onPause || onResume || onResolve || onFail)) {
+  if (!isTerminal && (onStart || onPause || onResume || onResolve || onFail || onTakeOver || onStartForward)) {
     children.push(e("div", { key: "actions", style: { display: "flex", gap: 8, marginTop: 2, flexWrap: "wrap" } },
       isNew && onStart && e("button", { onClick: () => onStart(task.id), style: btnStyle(C.amber) }, "▶ Başla"),
       isDoing && onPause && e("button", { onClick: () => onPause(task.id), style: btnStyle(C.muted) }, "⏸ Fasilə ver"),
       isDoing && onResolve && e("button", { onClick: () => onResolve(task.id), style: btnStyle(C.green) }, "✓ Həll et"),
       isPaused && onResume && e("button", { onClick: () => onResume(task.id), style: btnStyle(C.amber) }, "▶ Davam et"),
-      (isDoing || isPaused) && onFail && e("button", { onClick: () => setShowFailBox(v => !v), style: btnStyle(C.red) }, "✗ Həll edilmədi")
+      (isDoing || isPaused) && onFail && e("button", { onClick: () => setShowFailBox(v => !v), style: btnStyle(C.red) }, "✗ Həll edilmədi"),
+      onTakeOver && e("button", { onClick: () => { if (window.confirm("Bu tapşırığı özünüzə götürürsünüz?")) onTakeOver(task.id); }, style: btnStyle(C.amber) }, "🙋 Özümə götür"),
+      onStartForward && e("button", { onClick: () => onStartForward(task.id), style: btnStyle(C.muted) }, "🔁 Yönləndir")
+    ));
+  }
+
+  if (forwardingOpen && onForwardTo) {
+    children.push(e("div", { key: "forwardbox", style: { display: "flex", flexDirection: "column", gap: 8, background: C.surface, border: "1px solid " + C.border, borderRadius: 8, padding: 10 } },
+      e("div", { style: { fontFamily: FONT, fontSize: 12, color: C.text, fontWeight: 600 } }, "Kimə yönləndirilsin?"),
+      e("div", { style: { display: "flex", flexWrap: "wrap", gap: 8 } },
+        (forwardCandidates || []).length === 0
+          ? e("div", { style: { color: C.faint, fontSize: 12, fontFamily: FONT } }, "Başqa üzv yoxdur.")
+          : forwardCandidates.map(m => e("button", {
+              key: m.id, onClick: () => onForwardTo(m.id),
+              style: { display: "flex", alignItems: "center", gap: 6, padding: "5px 10px 5px 5px", borderRadius: 7, border: "1px solid " + C.border, background: "transparent", cursor: "pointer" }
+            },
+              e(Avatar, { name: m.name, size: 20 }),
+              e("span", { style: { fontFamily: FONT, fontSize: 12.5, color: C.text } }, m.name)
+            ))
+      )
     ));
   }
 
@@ -289,6 +320,10 @@ function App() {
   const [reportStart, setReportStart] = useState(() => { const d = new Date(); d.setDate(1); return d.toISOString().slice(0, 10); });
   const [reportEnd, setReportEnd] = useState(() => new Date().toISOString().slice(0, 10));
   const [reportMemberFilter, setReportMemberFilter] = useState("all");
+  const [boardDate, setBoardDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [editingDurationId, setEditingDurationId] = useState(null);
+  const [durationInput, setDurationInput] = useState("");
+  const [forwardingTaskId, setForwardingTaskId] = useState(null);
   const [newPriority, setNewPriority] = useState(PRIORITY.NORMAL);
   const [assignMode, setAssignMode] = useState("strict");
   const [manualPick, setManualPick] = useState(null);
@@ -329,7 +364,7 @@ function App() {
   useEffect(() => {
     if (currentUser && state) {
       const fresh = state.members.find(m => m.id === currentUser.id);
-      if (fresh && (fresh.name !== currentUser.name || fresh.pin !== currentUser.pin)) setCurrentUser(fresh);
+      if (fresh && JSON.stringify(fresh) !== JSON.stringify(currentUser)) setCurrentUser(fresh);
       if (!fresh) setCurrentUser(null);
     }
   }, [state]);
@@ -521,6 +556,41 @@ function App() {
     persist(prev => ({ ...prev, departments: (prev.departments || []).filter(d => d !== name) }));
   }
 
+  function takeOverTask(taskId) {
+    persist(prev => ({
+      ...prev,
+      tasks: prev.tasks.map(t => {
+        if (t.id !== taskId) return t;
+        const prevAssignee = prev.members.find(m => m.id === t.assignedTo);
+        return {
+          ...t, assignedTo: currentUser.id, status: STATUS.NEW,
+          startedAt: null, totalPauseMs: 0, pausedAt: null,
+          comments: [...(t.comments || []), { author: currentUser.name, text: "Tapşırığı " + (prevAssignee ? prevAssignee.name + "-dan " : "") + "özü götürdü.", at: Date.now() }]
+        };
+      })
+    }));
+  }
+
+  function forwardTask(taskId, toMemberId) {
+    persist(prev => {
+      const toMember = prev.members.find(m => m.id === toMemberId);
+      return {
+        ...prev,
+        tasks: prev.tasks.map(t => t.id === taskId
+          ? {
+              ...t, assignedTo: toMemberId, status: STATUS.NEW,
+              startedAt: null, totalPauseMs: 0, pausedAt: null,
+              comments: [...(t.comments || []), { author: currentUser.name, text: "Tapşırığı " + (toMember ? toMember.name : "") + "-ə yönləndirdi.", at: Date.now() }]
+            }
+          : t)
+      };
+    });
+  }
+
+  function editTaskDuration(taskId, minutes) {
+    persist(prev => ({ ...prev, tasks: prev.tasks.map(t => t.id === taskId ? { ...t, durationMinutes: minutes } : t) }));
+  }
+
   function deleteTask(taskId) {
     persist(prev => ({ ...prev, tasks: prev.tasks.filter(t => t.id !== taskId) }));
   }
@@ -548,7 +618,7 @@ function App() {
     if (!newTitle.trim()) return;
     persist(prev => {
       let assignedTo = null, rrIndex = prev.rrIndex;
-      const pool = activeMembers(prev.members);
+      const pool = activeMembers(prev.members).filter(m => !m.frozen);
       if (pool.length > 0) {
         if (assignMode === "manual") {
           const chosen = manualPick ? pool.find(p => p.id === manualPick) : null;
@@ -656,6 +726,10 @@ function App() {
       }]
     }));
     setChatInput("");
+  }
+
+  function toggleFrozen(id) {
+    persist(prev => ({ ...prev, members: prev.members.map(m => m.id === id ? { ...m, frozen: !m.frozen } : m) }));
   }
 
   function setMemberMode(id, mode) {
@@ -770,7 +844,7 @@ function App() {
             e("input", { type: "radio", checked: assignMode === opt.id, onChange: () => setAssignMode(opt.id) }), opt.label))
       ),
       assignMode === "manual" && e("div", { style: { display: "flex", flexWrap: "wrap", gap: 8 } },
-        activeMembers(state.members).map(m => e("button", {
+        activeMembers(state.members).filter(m => !m.frozen).map(m => e("button", {
           key: m.id, onClick: () => setManualPick(m.id),
           style: { display: "flex", alignItems: "center", gap: 7, padding: "6px 11px 6px 6px", borderRadius: 8,
             border: "1.5px solid " + (manualPick === m.id ? C.amber : C.border), background: manualPick === m.id ? C.amberDim : "transparent", cursor: "pointer" }
@@ -780,6 +854,8 @@ function App() {
           suggestion && suggestion.member.id === m.id && e(Badge, { tone: "amber" }, "tövsiyə")
         ))
       ),
+      assignMode === "manual" && activeMembers(state.members).some(m => m.frozen) && e("div", { style: { color: C.faint, fontSize: 12, fontFamily: FONT } },
+        "❄️ Bugün işdə olmayan üzvlər siyahıda görünmür."),
       activeMembers(state.members).length === 0 && e("div", { style: { color: C.faint, fontSize: 13, fontFamily: FONT } },
         "Hələ komanda üzvü yoxdur — tapşırıq təyinatsız yaradılacaq. \"Komanda\" bölməsindən üzv əlavə edin."),
       e("button", { onClick: submitTask, disabled: !newTitle.trim(), style: { ...primaryBtn, opacity: !newTitle.trim() ? 0.5 : 1, marginTop: 6 } }, "+ Tapşırığı yarat")
@@ -787,10 +863,29 @@ function App() {
   }
 
   if (tab === "board") {
+    const boardDayStart = new Date(boardDate + "T00:00:00").getTime();
+    const boardDayEnd = new Date(boardDate + "T23:59:59").getTime();
+    const boardTasks = allTasksSorted.filter(t => t.createdAt >= boardDayStart && t.createdAt <= boardDayEnd);
+    const isToday = boardDate === new Date().toISOString().slice(0, 10);
     sections.push(e("div", { key: "board", style: { display: "flex", flexDirection: "column", gap: 12 } },
-      allTasksSorted.length === 0 && e("div", { style: { color: C.faint, fontSize: 13.5, fontFamily: FONT } }, "Hələ tapşırıq yoxdur."),
-      allTasksSorted.map(t => e(TaskCard, { key: t.id, task: t, members: state.members, currentUser, onComment: addComment,
-        onDelete: isReception ? deleteTask : null }))
+      e("div", { style: { display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" } },
+        e(Input, { label: "Tarix", type: "date", value: boardDate, onChange: ev => setBoardDate(ev.target.value) }),
+        !isToday && e("button", { onClick: () => setBoardDate(new Date().toISOString().slice(0, 10)), style: btnStyle(C.amber) }, "Bugün")
+      ),
+      boardTasks.length === 0 && e("div", { style: { color: C.faint, fontSize: 13.5, fontFamily: FONT } }, "Bu tarixdə tapşırıq yoxdur."),
+      boardTasks.map(t => e(TaskCard, { key: t.id, task: t, members: state.members, currentUser, onComment: addComment,
+        onDelete: isReception ? deleteTask : null,
+        onEditDuration: isReception ? ((id, cur) => { setEditingDurationId(id); setDurationInput(String(cur != null ? cur : "")); }) : null,
+        onTakeOver: (!isReception && !isRequesterOnly && t.assignedTo !== currentUser.id && t.status !== STATUS.DONE && t.status !== STATUS.FAILED) ? takeOverTask : null,
+        onStartForward: (!isReception && t.assignedTo === currentUser.id && t.status !== STATUS.DONE && t.status !== STATUS.FAILED) ? (id => setForwardingTaskId(id === forwardingTaskId ? null : id)) : null,
+        forwardingOpen: forwardingTaskId === t.id,
+        onForwardTo: (toId) => { forwardTask(t.id, toId); setForwardingTaskId(null); },
+        editingDuration: editingDurationId === t.id,
+        durationInput, setDurationInput,
+        onSaveDuration: () => { const n = parseInt(durationInput, 10); if (!isNaN(n) && n >= 0) editTaskDuration(t.id, n); setEditingDurationId(null); },
+        onCancelDuration: () => setEditingDurationId(null),
+        forwardCandidates: activeMembers(state.members).filter(m => m.id !== t.assignedTo)
+      }))
     ));
   }
 
@@ -798,7 +893,11 @@ function App() {
     sections.push(e("div", { key: "mine", style: { display: "flex", flexDirection: "column", gap: 12 } },
       myTasks.length === 0 && e("div", { style: { color: C.faint, fontSize: 13.5, fontFamily: FONT } }, "Sizə hələ tapşırıq düşməyib."),
       myTasks.map(t => e(TaskCard, { key: t.id, task: t, members: state.members, currentUser,
-        onStart: startTask, onPause: pauseTask, onResume: resumeTask, onResolve: resolveTask, onFail: failTask, onComment: addComment, showAssignee: false }))
+        onStart: startTask, onPause: pauseTask, onResume: resumeTask, onResolve: resolveTask, onFail: failTask, onComment: addComment, showAssignee: false,
+        onStartForward: t.status !== STATUS.DONE && t.status !== STATUS.FAILED ? (id => setForwardingTaskId(id === forwardingTaskId ? null : id)) : null,
+        forwardingOpen: forwardingTaskId === t.id,
+        onForwardTo: (toId) => { forwardTask(t.id, toId); setForwardingTaskId(null); },
+        forwardCandidates: activeMembers(state.members).filter(m => m.id !== t.assignedTo) }))
     ));
   }
 
@@ -956,6 +1055,11 @@ function App() {
                 e("span", { style: { color: C.faint, fontFamily: FONT, fontSize: 12, width: 16 } }, i + 1),
                 e(Avatar, { name: m.name, size: 26 }),
                 e("span", { style: { flex: 1, fontFamily: FONT, fontSize: 13.5, color: C.text, fontWeight: 600 } }, m.name),
+                m.frozen && e(Badge, { tone: "red" }, "❄️ Bugün yox"),
+                m.role === "member" && e("button", {
+                  onClick: () => toggleFrozen(m.id),
+                  style: { ...iconBtn, fontSize: 15, color: m.frozen ? C.amber : C.faint }
+                }, "❄️"),
                 e("button", { onClick: () => startEditMember(m), style: iconBtn }, "✎"),
                 m.role === "member" && e("button", { onClick: () => moveMember(m.id, -1), style: iconBtn }, "▲"),
                 m.role === "member" && e("button", { onClick: () => moveMember(m.id, 1), style: iconBtn }, "▼"),
@@ -1096,7 +1200,17 @@ function App() {
         onClick: enablePush,
         style: primaryBtn
       }, "🔔 Bildirişləri aktivləşdir"),
-      pushDebug && e("div", { style: { color: C.muted, fontSize: 11.5, fontFamily: "monospace", wordBreak: "break-all", background: C.surface2, padding: 8, borderRadius: 6 } }, pushDebug)
+      pushDebug && e("div", { style: { color: C.muted, fontSize: 11.5, fontFamily: "monospace", wordBreak: "break-all", background: C.surface2, padding: 8, borderRadius: 6 } }, pushDebug),
+      !isReception && currentUser.role === "member" && e(React.Fragment, null,
+        e("div", { style: { height: 1, background: C.border, margin: "8px 0" } }),
+        e("div", { style: { fontFamily: FONT, fontSize: 13, color: C.muted, fontWeight: 600 } }, "Müsaitlik"),
+        e("div", { style: { color: C.faint, fontSize: 12, fontFamily: FONT } },
+          currentUser.frozen ? "İşdə deyilsiniz — sizə yeni tapşırıq düşməyəcək." : "Aktivsiniz — növbəyə görə tapşırıq düşür."),
+        e("button", {
+          onClick: () => toggleFrozen(currentUser.id),
+          style: currentUser.frozen ? primaryBtn : { ...btnStyle(C.red) }
+        }, currentUser.frozen ? "✓ Yenidən aktivəm" : "❄️ Bugün işdə deyiləm")
+      )
     ));
 
     if (!isReception && !isRequesterOnly) {
